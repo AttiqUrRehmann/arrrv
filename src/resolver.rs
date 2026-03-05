@@ -200,4 +200,126 @@ mod tests {
         )];
         assert!(resolve("scales", &index).is_err());
     }
+
+    // --- version conflict and diamond dependency tests ---
+
+    fn constrained(name: &str, op: crate::version::Op, version: &str) -> Dep {
+        Dep::new(
+            name.to_string(),
+            Some(crate::version::VersionReq {
+                op,
+                version: RVersion::parse(version).unwrap(),
+            }),
+        )
+    }
+
+    /// Build an index where two packages (pkg_a, pkg_b) share a common dep,
+    /// each with their own constraint on it. Useful for diamond scenarios.
+    fn diamond_index(dep_a: Dep, dep_b: Dep, common_version: &str) -> HashMap<String, Package> {
+        let mut index = HashMap::new();
+        index.insert(
+            "root".to_string(),
+            Package {
+                version: "1.0".to_string(),
+                deps: vec![dep("pkg_a"), dep("pkg_b")],
+            },
+        );
+        index.insert(
+            "pkg_a".to_string(),
+            Package {
+                version: "1.0".to_string(),
+                deps: vec![dep_a],
+            },
+        );
+        index.insert(
+            "pkg_b".to_string(),
+            Package {
+                version: "1.0".to_string(),
+                deps: vec![dep_b],
+            },
+        );
+        index.insert(
+            "common".to_string(),
+            Package {
+                version: common_version.to_string(),
+                deps: vec![],
+            },
+        );
+        index
+    }
+
+    #[test]
+    fn test_diamond_compatible_constraints() {
+        use crate::version::Op;
+        // pkg_a needs common >= 1.0, pkg_b needs common >= 1.5
+        // available is 2.0 — satisfies both
+        let index = diamond_index(
+            constrained("common", Op::Gte, "1.0"),
+            constrained("common", Op::Gte, "1.5"),
+            "2.0",
+        );
+        let resolved = resolve("root", &index).unwrap();
+        assert!(resolved.contains_key("common"));
+        assert_eq!(resolved["common"], RVersion::parse("2.0").unwrap());
+    }
+
+    #[test]
+    fn test_diamond_conflicting_constraints() {
+        use crate::version::Op;
+        // pkg_a needs common >= 2.0, pkg_b needs common < 2.0
+        // available is 2.0 — fails the < 2.0 constraint
+        let index = diamond_index(
+            constrained("common", Op::Gte, "2.0"),
+            constrained("common", Op::Lt, "2.0"),
+            "2.0",
+        );
+        assert!(resolve("root", &index).is_err());
+    }
+
+    #[test]
+    fn test_transitive_conflict_propagates() {
+        use crate::version::Op;
+        // root -> pkg_a -> common >= 99.0, but common is at 1.0
+        let mut index = HashMap::new();
+        index.insert(
+            "root".to_string(),
+            Package {
+                version: "1.0".to_string(),
+                deps: vec![dep("pkg_a")],
+            },
+        );
+        index.insert(
+            "pkg_a".to_string(),
+            Package {
+                version: "1.0".to_string(),
+                deps: vec![constrained("common", Op::Gte, "99.0")],
+            },
+        );
+        index.insert(
+            "common".to_string(),
+            Package {
+                version: "1.0".to_string(),
+                deps: vec![],
+            },
+        );
+        assert!(resolve("root", &index).is_err());
+    }
+
+    #[test]
+    fn test_exact_version_match_passes() {
+        use crate::version::Op;
+        let mut index = make_index();
+        // require exactly rlang 1.1.4 — that's what's available
+        index.get_mut("scales").unwrap().deps = vec![constrained("rlang", Op::Eq, "1.1.4")];
+        assert!(resolve("scales", &index).is_ok());
+    }
+
+    #[test]
+    fn test_exact_version_match_fails() {
+        use crate::version::Op;
+        let mut index = make_index();
+        // require exactly rlang 1.1.3 — 1.1.4 is available, not 1.1.3
+        index.get_mut("scales").unwrap().deps = vec![constrained("rlang", Op::Eq, "1.1.3")];
+        assert!(resolve("scales", &index).is_err());
+    }
 }
