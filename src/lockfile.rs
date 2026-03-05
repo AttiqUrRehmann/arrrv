@@ -4,13 +4,24 @@ use serde::Deserialize;
 use std::collections::HashMap;
 use std::path::Path;
 
+const RSPM_BASE: &str = "https://packagemanager.posit.co/cran";
+
 /// Write arrrv.lock from the pubgrub-resolved map of package → version.
+/// `upload_dates` maps package name → CRAN upload date (e.g. "2024-06-05"),
+/// used to build a reproducible RSPM snapshot URL per package.
 pub fn write_lockfile(
     roots: &[String],
     resolved: &HashMap<String, RVersion>,
     index: &HashMap<String, Package>,
+    upload_dates: &HashMap<String, String>,
 ) {
-    write_lockfile_to(Path::new("arrrv.lock"), roots, resolved, index);
+    write_lockfile_to(
+        Path::new("arrrv.lock"),
+        roots,
+        resolved,
+        index,
+        upload_dates,
+    );
     println!("wrote arrrv.lock");
 }
 
@@ -19,6 +30,7 @@ fn write_lockfile_to(
     roots: &[String],
     resolved: &HashMap<String, RVersion>,
     index: &HashMap<String, Package>,
+    upload_dates: &HashMap<String, String>,
 ) {
     let mut sorted_roots = roots.to_vec();
     sorted_roots.sort();
@@ -45,10 +57,14 @@ fn write_lockfile_to(
             .get(*name)
             .map(|p| p.version.as_str())
             .unwrap_or_else(|| "0");
+        let registry = upload_dates
+            .get(*name)
+            .map(|date| format!("{}/{}", RSPM_BASE, date))
+            .unwrap_or_else(|| format!("{}/latest", RSPM_BASE));
         out.push_str("[[package]]\n");
         out.push_str(&format!("name = \"{}\"\n", name));
         out.push_str(&format!("version = \"{}\"\n", version_str));
-        out.push_str("source = { registry = \"https://cloud.r-project.org\" }\n");
+        out.push_str(&format!("source = {{ registry = \"{}\" }}\n", registry));
         // write deps that are also in the resolved set
         if let Some(pkg) = index.get(*name)
             && !pkg.deps.is_empty()
@@ -77,8 +93,8 @@ fn write_lockfile_to(
     std::fs::write(path, out).unwrap();
 }
 
-/// Reads arrrv.lock and returns the list of locked (name, version) pairs.
-pub fn read_lockfile() -> Vec<(String, String)> {
+/// Reads arrrv.lock and returns the list of locked (name, version, registry_url) triples.
+pub fn read_lockfile() -> Vec<(String, String, String)> {
     let text = std::fs::read_to_string("arrrv.lock")
         .expect("no arrrv.lock found — run `arrrv lock` first");
     parse_lockfile(&text)
@@ -99,7 +115,7 @@ pub fn lockfile_is_fresh(roots: &[String]) -> bool {
     locked == current
 }
 
-fn parse_lockfile(text: &str) -> Vec<(String, String)> {
+fn parse_lockfile(text: &str) -> Vec<(String, String, String)> {
     #[derive(Deserialize)]
     struct RawLockfile {
         #[serde(default)]
@@ -110,13 +126,30 @@ fn parse_lockfile(text: &str) -> Vec<(String, String)> {
         name: String,
         version: String,
         #[serde(default)]
+        source: LockedSource,
+        #[serde(default)]
         #[allow(dead_code)]
-        dependencies: Vec<toml::Value>, // present but not used during sync
+        dependencies: Vec<toml::Value>,
+    }
+    #[derive(Deserialize)]
+    struct LockedSource {
+        #[serde(default = "default_registry")]
+        registry: String,
+    }
+    impl Default for LockedSource {
+        fn default() -> Self {
+            LockedSource {
+                registry: default_registry(),
+            }
+        }
+    }
+    fn default_registry() -> String {
+        format!("{}/latest", RSPM_BASE)
     }
     let lf: RawLockfile = toml::from_str(text).expect("failed to parse arrrv.lock");
     lf.package
         .into_iter()
-        .map(|p| (p.name, p.version))
+        .map(|p| (p.name, p.version, p.source.registry))
         .collect()
 }
 
@@ -158,14 +191,22 @@ mod tests {
             .collect()
     }
 
+    fn make_dates(entries: &[(&str, &str)]) -> HashMap<String, String> {
+        entries
+            .iter()
+            .map(|(name, date)| (name.to_string(), date.to_string()))
+            .collect()
+    }
+
     #[test]
     fn test_write_lockfile_format() {
         let tmp = tempfile::NamedTempFile::new().unwrap();
         let index = make_index(&[("ggplot2", "3.5.1"), ("rlang", "1.1.4")]);
         let resolved = make_resolved(&[("ggplot2", "3.5.1"), ("rlang", "1.1.4")]);
+        let dates = make_dates(&[("ggplot2", "2024-06-05"), ("rlang", "2024-05-01")]);
         let roots = vec!["ggplot2".to_string()];
 
-        write_lockfile_to(tmp.path(), &roots, &resolved, &index);
+        write_lockfile_to(tmp.path(), &roots, &resolved, &index, &dates);
 
         let contents = std::fs::read_to_string(tmp.path()).unwrap();
         assert!(contents.contains("version = 1"));
@@ -177,28 +218,48 @@ mod tests {
     }
 
     #[test]
-    fn test_write_lockfile_includes_source() {
+    fn test_write_lockfile_includes_rspm_source() {
+        let tmp = tempfile::NamedTempFile::new().unwrap();
+        let index = make_index(&[("ggplot2", "3.5.1")]);
+        let resolved = make_resolved(&[("ggplot2", "3.5.1")]);
+        let dates = make_dates(&[("ggplot2", "2024-06-05")]);
+        let roots = vec!["ggplot2".to_string()];
+
+        write_lockfile_to(tmp.path(), &roots, &resolved, &index, &dates);
+
+        let contents = std::fs::read_to_string(tmp.path()).unwrap();
+        assert!(contents.contains(
+            "source = { registry = \"https://packagemanager.posit.co/cran/2024-06-05\" }"
+        ));
+    }
+
+    #[test]
+    fn test_write_lockfile_falls_back_to_latest_without_date() {
         let tmp = tempfile::NamedTempFile::new().unwrap();
         let index = make_index(&[("ggplot2", "3.5.1")]);
         let resolved = make_resolved(&[("ggplot2", "3.5.1")]);
         let roots = vec!["ggplot2".to_string()];
 
-        write_lockfile_to(tmp.path(), &roots, &resolved, &index);
+        // no dates provided — should fall back to /latest
+        write_lockfile_to(tmp.path(), &roots, &resolved, &index, &HashMap::new());
 
         let contents = std::fs::read_to_string(tmp.path()).unwrap();
-        assert!(contents.contains("source = { registry = \"https://cloud.r-project.org\" }"));
+        assert!(
+            contents.contains(
+                "source = { registry = \"https://packagemanager.posit.co/cran/latest\" }"
+            )
+        );
     }
 
     #[test]
     fn test_write_lockfile_preserves_dash_version() {
-        // "2.23-26" must not become "2.23.26" — the original string must be preserved
-        // so that download URLs remain valid.
         let tmp = tempfile::NamedTempFile::new().unwrap();
         let index = make_index(&[("nlme", "2.23-26")]);
         let resolved = make_resolved(&[("nlme", "2.23-26")]);
+        let dates = make_dates(&[("nlme", "2024-01-10")]);
         let roots = vec!["nlme".to_string()];
 
-        write_lockfile_to(tmp.path(), &roots, &resolved, &index);
+        write_lockfile_to(tmp.path(), &roots, &resolved, &index, &dates);
 
         let contents = std::fs::read_to_string(tmp.path()).unwrap();
         assert!(contents.contains("version = \"2.23-26\""));
@@ -210,9 +271,10 @@ mod tests {
         let tmp = tempfile::NamedTempFile::new().unwrap();
         let index = make_index(&[("zzz", "1.0"), ("aaa", "2.0")]);
         let resolved = make_resolved(&[("zzz", "1.0"), ("aaa", "2.0")]);
+        let dates = make_dates(&[("zzz", "2024-01-01"), ("aaa", "2024-01-02")]);
         let roots = vec!["zzz".to_string(), "aaa".to_string()];
 
-        write_lockfile_to(tmp.path(), &roots, &resolved, &index);
+        write_lockfile_to(tmp.path(), &roots, &resolved, &index, &dates);
 
         let contents = std::fs::read_to_string(tmp.path()).unwrap();
         let aaa_pos = contents.find("\"aaa\"").unwrap();
@@ -225,20 +287,22 @@ mod tests {
         let tmp = tempfile::NamedTempFile::new().unwrap();
         let index = make_index(&[("ggplot2", "3.5.1"), ("rlang", "1.1.4")]);
         let resolved = make_resolved(&[("ggplot2", "3.5.1"), ("rlang", "1.1.4")]);
+        let dates = make_dates(&[("ggplot2", "2024-06-05"), ("rlang", "2024-05-01")]);
         let roots = vec!["ggplot2".to_string()];
 
-        write_lockfile_to(tmp.path(), &roots, &resolved, &index);
+        write_lockfile_to(tmp.path(), &roots, &resolved, &index, &dates);
 
         let text = std::fs::read_to_string(tmp.path()).unwrap();
         let mut parsed = parse_lockfile(&text);
-        parsed.sort();
+        parsed.sort_by(|a, b| a.0.cmp(&b.0));
 
+        assert_eq!(parsed[0].0, "ggplot2");
+        assert_eq!(parsed[0].1, "3.5.1");
         assert_eq!(
-            parsed,
-            vec![
-                ("ggplot2".to_string(), "3.5.1".to_string()),
-                ("rlang".to_string(), "1.1.4".to_string()),
-            ]
+            parsed[0].2,
+            "https://packagemanager.posit.co/cran/2024-06-05"
         );
+        assert_eq!(parsed[1].0, "rlang");
+        assert_eq!(parsed[1].1, "1.1.4");
     }
 }
