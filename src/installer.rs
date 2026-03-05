@@ -37,31 +37,38 @@ pub fn get_r_version() -> &'static str {
     })
 }
 
-fn make_url(name: &str, version: &str, arch: &str, r_version: &str) -> String {
+/// Constructs a binary download URL from an RSPM registry base URL.
+/// registry is e.g. "https://packagemanager.posit.co/cran/2024-06-05"
+fn make_url(name: &str, version: &str, arch: &str, r_version: &str, registry: &str) -> String {
     format!(
-        "https://cloud.r-project.org/bin/macosx/{}/contrib/{}/{}_{}.tgz",
-        arch, r_version, name, version
+        "{}/bin/macosx/{}/contrib/{}/{}_{}.tgz",
+        registry, arch, r_version, name, version
     )
 }
 
-/// Returns (name, version, url) tuples from lockfile (name, version) pairs.
-/// Does not require the CRAN index.
-pub fn build_urls_from_pairs(packages: &[(String, String)]) -> Vec<(String, String, String)> {
+/// Returns (name, version, url) tuples from lockfile (name, version, registry) triples.
+/// Uses the per-package RSPM registry URL stored in the lockfile.
+pub fn build_urls_from_pairs(
+    packages: &[(String, String, String)],
+) -> Vec<(String, String, String)> {
     let arch = get_arch();
     let r_version = get_r_version();
     packages
         .iter()
-        .map(|(name, version)| {
+        .map(|(name, version, registry)| {
             (
                 name.clone(),
                 version.clone(),
-                make_url(name, version, arch, r_version),
+                make_url(name, version, arch, r_version, registry),
             )
         })
         .collect()
 }
 
+const RSPM_LATEST: &str = "https://packagemanager.posit.co/cran/latest";
+
 /// Returns (name, version, url) tuples for each package, looking up versions in the CRAN index.
+/// Uses RSPM latest for installs that don't come from a lockfile.
 pub fn build_urls(
     packages: &[String],
     index: &HashMap<String, Package>,
@@ -73,7 +80,7 @@ pub fn build_urls(
         .iter()
         .filter_map(|name| {
             let pkg = index.get(name)?;
-            let url = make_url(name, &pkg.version, arch, r_version);
+            let url = make_url(name, &pkg.version, arch, r_version, RSPM_LATEST);
             Some((name.clone(), pkg.version.clone(), url))
         })
         .collect()
@@ -248,7 +255,7 @@ mod tests {
         assert_eq!(name, "ggplot2");
         assert_eq!(version, "3.5.1");
         assert!(url.contains("ggplot2_3.5.1.tgz"));
-        assert!(url.starts_with("https://cloud.r-project.org/bin/macosx/"));
+        assert!(url.starts_with("https://packagemanager.posit.co/cran/latest/bin/macosx/"));
         assert!(url.contains("/contrib/"));
     }
 

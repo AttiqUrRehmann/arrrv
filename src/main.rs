@@ -3,6 +3,7 @@ use std::time::Instant;
 
 mod cache;
 mod config;
+mod crandb;
 mod index;
 mod installer;
 mod lockfile;
@@ -122,7 +123,21 @@ fn main() {
                 fmt_duration(t.elapsed().as_millis())
             );
 
-            write_lockfile(&root_names, &resolved, &index);
+            // fetch upload dates from crandb in parallel so the lockfile
+            // records a per-package RSPM snapshot URL for reproducible installs
+            let pairs: Vec<(String, String)> = resolved
+                .keys()
+                .map(|name| {
+                    let version = index
+                        .get(name)
+                        .map(|p| p.version.clone())
+                        .unwrap_or_default();
+                    (name.clone(), version)
+                })
+                .collect();
+            let upload_dates = crandb::fetch_upload_dates(&pairs);
+
+            write_lockfile(&root_names, &resolved, &index, &upload_dates);
         }
 
         Commands::Sync => {
