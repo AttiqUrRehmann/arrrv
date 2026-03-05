@@ -1,17 +1,23 @@
 use crate::index::Package;
+use crate::version::RVersion;
 use serde::Deserialize;
 use std::collections::HashMap;
 use std::path::Path;
 
-pub fn write_lockfile(roots: &[String], packages: &[String], index: &HashMap<String, Package>) {
-    write_lockfile_to(Path::new("arrrv.lock"), roots, packages, index);
+/// Write arrrv.lock from the pubgrub-resolved map of package → version.
+pub fn write_lockfile(
+    roots: &[String],
+    resolved: &HashMap<String, RVersion>,
+    index: &HashMap<String, Package>,
+) {
+    write_lockfile_to(Path::new("arrrv.lock"), roots, resolved, index);
     println!("wrote arrrv.lock");
 }
 
 fn write_lockfile_to(
     path: &Path,
     roots: &[String],
-    packages: &[String],
+    resolved: &HashMap<String, RVersion>,
     index: &HashMap<String, Package>,
 ) {
     let mut sorted_roots = roots.to_vec();
@@ -29,35 +35,44 @@ fn write_lockfile_to(
     );
     out.push_str("]\n\n");
 
-    let mut sorted = packages.to_vec();
-    sorted.sort();
-    for name in &sorted {
-        if let Some(pkg) = index.get(name) {
-            out.push_str("[[package]]\n");
-            out.push_str(&format!("name = \"{}\"\n", name));
-            out.push_str(&format!("version = \"{}\"\n", pkg.version));
-            if !pkg.deps.is_empty() {
-                let mut sorted_deps = pkg.deps.clone();
-                sorted_deps.sort();
-                // only include deps that are in the resolved package list
-                let resolved_deps: Vec<_> = sorted_deps
-                    .iter()
-                    .filter(|d| packages.contains(d))
-                    .collect();
-                if !resolved_deps.is_empty() {
-                    out.push_str("dependencies = [");
-                    out.push_str(
-                        &resolved_deps
-                            .iter()
-                            .map(|d| format!("{{ name = \"{}\" }}", d))
-                            .collect::<Vec<_>>()
-                            .join(", "),
-                    );
-                    out.push_str("]\n");
-                }
+    let mut sorted_names: Vec<&String> = resolved.keys().collect();
+    sorted_names.sort();
+
+    for name in &sorted_names {
+        // Use the original version string from the index (preserves dashes e.g. "2.23-26").
+        // Fall back to RVersion Display only if somehow not in the index.
+        let version_str = index
+            .get(*name)
+            .map(|p| p.version.as_str())
+            .unwrap_or_else(|| "0");
+        out.push_str("[[package]]\n");
+        out.push_str(&format!("name = \"{}\"\n", name));
+        out.push_str(&format!("version = \"{}\"\n", version_str));
+        out.push_str("source = { registry = \"https://cloud.r-project.org\" }\n");
+        // write deps that are also in the resolved set
+        if let Some(pkg) = index.get(*name)
+            && !pkg.deps.is_empty()
+        {
+            let mut sorted_dep_names: Vec<&str> =
+                pkg.deps.iter().map(|d| d.name.as_str()).collect();
+            sorted_dep_names.sort();
+            let resolved_deps: Vec<&str> = sorted_dep_names
+                .into_iter()
+                .filter(|d| resolved.contains_key(*d))
+                .collect();
+            if !resolved_deps.is_empty() {
+                out.push_str("dependencies = [");
+                out.push_str(
+                    &resolved_deps
+                        .iter()
+                        .map(|d| format!("{{ name = \"{}\" }}", d))
+                        .collect::<Vec<_>>()
+                        .join(", "),
+                );
+                out.push_str("]\n");
             }
-            out.push('\n');
         }
+        out.push('\n');
     }
     std::fs::write(path, out).unwrap();
 }
@@ -119,6 +134,7 @@ struct Manifest {
 mod tests {
     use super::*;
     use crate::index::Package;
+    use crate::version::RVersion;
 
     fn make_index(entries: &[(&str, &str)]) -> HashMap<String, Package> {
         entries
@@ -128,10 +144,17 @@ mod tests {
                     name.to_string(),
                     Package {
                         version: version.to_string(),
-                        deps: vec![],
+                        deps: vec![], // no deps needed for lockfile format tests
                     },
                 )
             })
+            .collect()
+    }
+
+    fn make_resolved(entries: &[(&str, &str)]) -> HashMap<String, RVersion> {
+        entries
+            .iter()
+            .map(|(name, version)| (name.to_string(), RVersion::parse(version).unwrap()))
             .collect()
     }
 
@@ -139,10 +162,10 @@ mod tests {
     fn test_write_lockfile_format() {
         let tmp = tempfile::NamedTempFile::new().unwrap();
         let index = make_index(&[("ggplot2", "3.5.1"), ("rlang", "1.1.4")]);
+        let resolved = make_resolved(&[("ggplot2", "3.5.1"), ("rlang", "1.1.4")]);
         let roots = vec!["ggplot2".to_string()];
-        let packages = vec!["ggplot2".to_string(), "rlang".to_string()];
 
-        write_lockfile_to(tmp.path(), &roots, &packages, &index);
+        write_lockfile_to(tmp.path(), &roots, &resolved, &index);
 
         let contents = std::fs::read_to_string(tmp.path()).unwrap();
         assert!(contents.contains("version = 1"));
@@ -154,13 +177,42 @@ mod tests {
     }
 
     #[test]
+    fn test_write_lockfile_includes_source() {
+        let tmp = tempfile::NamedTempFile::new().unwrap();
+        let index = make_index(&[("ggplot2", "3.5.1")]);
+        let resolved = make_resolved(&[("ggplot2", "3.5.1")]);
+        let roots = vec!["ggplot2".to_string()];
+
+        write_lockfile_to(tmp.path(), &roots, &resolved, &index);
+
+        let contents = std::fs::read_to_string(tmp.path()).unwrap();
+        assert!(contents.contains("source = { registry = \"https://cloud.r-project.org\" }"));
+    }
+
+    #[test]
+    fn test_write_lockfile_preserves_dash_version() {
+        // "2.23-26" must not become "2.23.26" — the original string must be preserved
+        // so that download URLs remain valid.
+        let tmp = tempfile::NamedTempFile::new().unwrap();
+        let index = make_index(&[("nlme", "2.23-26")]);
+        let resolved = make_resolved(&[("nlme", "2.23-26")]);
+        let roots = vec!["nlme".to_string()];
+
+        write_lockfile_to(tmp.path(), &roots, &resolved, &index);
+
+        let contents = std::fs::read_to_string(tmp.path()).unwrap();
+        assert!(contents.contains("version = \"2.23-26\""));
+        assert!(!contents.contains("2.23.26"));
+    }
+
+    #[test]
     fn test_write_lockfile_sorted() {
         let tmp = tempfile::NamedTempFile::new().unwrap();
         let index = make_index(&[("zzz", "1.0"), ("aaa", "2.0")]);
+        let resolved = make_resolved(&[("zzz", "1.0"), ("aaa", "2.0")]);
         let roots = vec!["zzz".to_string(), "aaa".to_string()];
-        let packages = vec!["zzz".to_string(), "aaa".to_string()];
 
-        write_lockfile_to(tmp.path(), &roots, &packages, &index);
+        write_lockfile_to(tmp.path(), &roots, &resolved, &index);
 
         let contents = std::fs::read_to_string(tmp.path()).unwrap();
         let aaa_pos = contents.find("\"aaa\"").unwrap();
@@ -169,26 +221,13 @@ mod tests {
     }
 
     #[test]
-    fn test_write_lockfile_skips_unknown_packages() {
-        let tmp = tempfile::NamedTempFile::new().unwrap();
-        let index = make_index(&[("ggplot2", "3.5.1")]);
-        let roots = vec!["ggplot2".to_string()];
-        let packages = vec!["ggplot2".to_string(), "unknown-pkg".to_string()];
-
-        write_lockfile_to(tmp.path(), &roots, &packages, &index);
-
-        let contents = std::fs::read_to_string(tmp.path()).unwrap();
-        assert!(!contents.contains("unknown-pkg"));
-    }
-
-    #[test]
     fn test_parse_lockfile_roundtrip() {
         let tmp = tempfile::NamedTempFile::new().unwrap();
         let index = make_index(&[("ggplot2", "3.5.1"), ("rlang", "1.1.4")]);
+        let resolved = make_resolved(&[("ggplot2", "3.5.1"), ("rlang", "1.1.4")]);
         let roots = vec!["ggplot2".to_string()];
-        let packages = vec!["ggplot2".to_string(), "rlang".to_string()];
 
-        write_lockfile_to(tmp.path(), &roots, &packages, &index);
+        write_lockfile_to(tmp.path(), &roots, &resolved, &index);
 
         let text = std::fs::read_to_string(tmp.path()).unwrap();
         let mut parsed = parse_lockfile(&text);

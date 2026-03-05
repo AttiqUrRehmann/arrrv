@@ -7,8 +7,9 @@ mod index;
 mod installer;
 mod lockfile;
 mod resolver;
+mod version;
 
-use config::{parse_dep_name, read_config};
+use config::{parse_dep, parse_dep_name, read_config};
 use index::fetch_cran_index;
 use installer::{build_urls, build_urls_from_pairs, download_and_install};
 use lockfile::{lockfile_is_fresh, read_lockfile, write_lockfile};
@@ -65,11 +66,19 @@ fn main() {
         Commands::Install { package } => {
             let t = Instant::now();
             let index = fetch_cran_index();
-            let deps = resolve(&package, &index);
-            let packages = build_urls(&deps, &index);
+            let resolved = resolve(&package, &index).unwrap_or_else(|e| {
+                eprintln!("error: {e}");
+                std::process::exit(1);
+            });
+            let dep_names: Vec<String> = resolved
+                .keys()
+                .filter(|n| *n != &package)
+                .cloned()
+                .collect();
+            let packages = build_urls(&dep_names, &index);
             println!(
                 "Resolved {} packages in {}",
-                deps.len(),
+                resolved.len(),
                 fmt_duration(t.elapsed().as_millis())
             );
 
@@ -93,23 +102,27 @@ fn main() {
 
         Commands::Lock => {
             let config = read_config();
-            let roots: Vec<String> = config
+            let root_deps: Vec<_> = config
                 .project
                 .dependencies
                 .iter()
-                .map(|d| parse_dep_name(d))
+                .map(|d| parse_dep(d))
                 .collect();
+            let root_names: Vec<String> = root_deps.iter().map(|d| d.name.clone()).collect();
 
             let t = Instant::now();
             let index = fetch_cran_index();
-            let all = resolve_all(&roots, &index);
+            let resolved = resolve_all(&root_deps, &index).unwrap_or_else(|e| {
+                eprintln!("error: {e}");
+                std::process::exit(1);
+            });
             println!(
                 "Resolved {} packages in {}",
-                all.len(),
+                resolved.len(),
                 fmt_duration(t.elapsed().as_millis())
             );
 
-            write_lockfile(&roots, &all, &index);
+            write_lockfile(&root_names, &resolved, &index);
         }
 
         Commands::Sync => {
