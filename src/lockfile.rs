@@ -48,6 +48,7 @@ fn write_lockfile_to(
         out.push_str("[[package]]\n");
         out.push_str(&format!("name = \"{}\"\n", name));
         out.push_str(&format!("version = \"{}\"\n", version_str));
+        out.push_str("source = { registry = \"https://cloud.r-project.org\" }\n");
         // write deps that are also in the resolved set
         if let Some(pkg) = index.get(*name)
             && !pkg.deps.is_empty()
@@ -173,6 +174,19 @@ mod tests {
         assert!(contents.contains("[[package]]"));
         assert!(contents.contains("name = \"ggplot2\""));
         assert!(contents.contains("version = \"3.5.1\""));
+    }
+
+    #[test]
+    fn test_write_lockfile_includes_source() {
+        let tmp = tempfile::NamedTempFile::new().unwrap();
+        let index = make_index(&[("ggplot2", "3.5.1")]);
+        let resolved = make_resolved(&[("ggplot2", "3.5.1")]);
+        let roots = vec!["ggplot2".to_string()];
+
+        write_lockfile_to(tmp.path(), &roots, &resolved, &index);
+
+        let contents = std::fs::read_to_string(tmp.path()).unwrap();
+        assert!(contents.contains("source = { registry = \"https://cloud.r-project.org\" }"));
     }
 
     #[test]
