@@ -1,3 +1,4 @@
+use pubgrub::Ranges;
 use serde::{Deserialize, Serialize};
 
 /// An R package version: "1.1.0", "4.5", "2.23-26"
@@ -19,6 +20,26 @@ impl RVersion {
     pub fn parse(s: &str) -> Option<Self> {
         let parts: Option<Vec<u32>> = s.split(['.', '-']).map(|p| p.parse().ok()).collect();
         parts.map(|p| RVersion { parts: p })
+    }
+
+    /// The smallest possible version — used as the lower bound by pubgrub.
+    pub fn minimum() -> Self {
+        RVersion { parts: vec![0] }
+    }
+
+    /// The next version after self — used by pubgrub to express exclusive upper bounds.
+    #[allow(dead_code)]
+    pub fn bump(&self) -> Self {
+        let mut parts = self.parts.clone();
+        *parts.last_mut().unwrap() += 1;
+        RVersion { parts }
+    }
+}
+
+impl std::fmt::Display for RVersion {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        let s: Vec<String> = self.parts.iter().map(|p| p.to_string()).collect();
+        write!(f, "{}", s.join("."))
     }
 }
 
@@ -82,7 +103,7 @@ impl VersionReq {
         Some(VersionReq { op, version })
     }
 
-    #[allow(dead_code)] // will be used by the resolver
+    #[allow(dead_code)]
     pub fn matches(&self, v: &RVersion) -> bool {
         match self.op {
             Op::Gte => v >= &self.version,
@@ -90,6 +111,17 @@ impl VersionReq {
             Op::Lte => v <= &self.version,
             Op::Lt => v < &self.version,
             Op::Eq => v == &self.version,
+        }
+    }
+
+    /// Convert to a pubgrub `Ranges<RVersion>` for use in dependency resolution.
+    pub fn to_range(&self) -> Ranges<RVersion> {
+        match self.op {
+            Op::Gte => Ranges::higher_than(self.version.clone()),
+            Op::Gt => Ranges::strictly_higher_than(self.version.clone()),
+            Op::Lte => Ranges::lower_than(self.version.clone()),
+            Op::Lt => Ranges::strictly_lower_than(self.version.clone()),
+            Op::Eq => Ranges::singleton(self.version.clone()),
         }
     }
 }

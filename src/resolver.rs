@@ -1,40 +1,98 @@
 use crate::index::Package;
-use std::collections::{HashMap, HashSet, VecDeque};
+use crate::version::RVersion;
+use pubgrub::{Dependencies, DependencyConstraints, DependencyProvider, Ranges};
+use std::collections::HashMap;
+use std::convert::Infallible;
 
-pub fn resolve(root: &str, index: &HashMap<String, Package>) -> Vec<String> {
-    let mut visited: HashSet<String> = HashSet::new();
-    let mut queue: VecDeque<String> = VecDeque::new();
-
-    queue.push_back(root.to_string());
-
-    while let Some(name) = queue.pop_front() {
-        if visited.contains(&name) {
-            continue;
-        }
-        visited.insert(name.clone());
-
-        if let Some(pkg) = index.get(&name) {
-            for dep in &pkg.deps {
-                if !visited.contains(&dep.name) {
-                    queue.push_back(dep.name.clone());
-                }
-            }
-        }
-    }
-
-    visited.remove(root);
-    visited.into_iter().collect()
+/// Wraps the CRAN index so it can be used as a pubgrub DependencyProvider.
+struct CranProvider<'a> {
+    index: &'a HashMap<String, Package>,
 }
 
-pub fn resolve_all(roots: &[String], index: &HashMap<String, Package>) -> Vec<String> {
-    let mut all: HashSet<String> = HashSet::new();
+impl DependencyProvider for CranProvider<'_> {
+    type P = String;
+    type V = RVersion;
+    type VS = Ranges<RVersion>;
+    type M = String;
+    type Priority = usize;
+    type Err = Infallible;
+
+    fn prioritize(
+        &self,
+        _package: &String,
+        _range: &Ranges<RVersion>,
+        _stats: &pubgrub::PackageResolutionStatistics,
+    ) -> usize {
+        0
+    }
+
+    fn choose_version(
+        &self,
+        package: &String,
+        range: &Ranges<RVersion>,
+    ) -> Result<Option<RVersion>, Infallible> {
+        let Some(pkg) = self.index.get(package) else {
+            return Ok(None);
+        };
+        let v = RVersion::parse(&pkg.version).unwrap_or_else(RVersion::minimum);
+        Ok(range.contains(&v).then_some(v))
+    }
+
+    fn get_dependencies(
+        &self,
+        package: &String,
+        _version: &RVersion,
+    ) -> Result<Dependencies<String, Ranges<RVersion>, String>, Infallible> {
+        let Some(pkg) = self.index.get(package) else {
+            return Ok(Dependencies::Unavailable(format!(
+                "{package} not found in CRAN index"
+            )));
+        };
+        let mut deps: DependencyConstraints<String, Ranges<RVersion>> =
+            DependencyConstraints::default();
+        for dep in &pkg.deps {
+            let range = dep
+                .req
+                .as_ref()
+                .map(|r| r.to_range())
+                .unwrap_or_else(Ranges::full);
+            deps.insert(dep.name.clone(), range);
+        }
+        Ok(Dependencies::Available(deps))
+    }
+}
+
+/// Resolves all transitive dependencies of `root` and returns a map of
+/// package name → resolved version. Returns an error string if resolution fails.
+pub fn resolve(
+    root: &str,
+    index: &HashMap<String, Package>,
+) -> Result<HashMap<String, RVersion>, String> {
+    let provider = CranProvider { index };
+    let root_version = index
+        .get(root)
+        .and_then(|p| RVersion::parse(&p.version))
+        .unwrap_or_else(RVersion::minimum);
+
+    pubgrub::resolve(&provider, root.to_string(), root_version)
+        .map(|fx_map| fx_map.into_iter().collect::<HashMap<_, _>>())
+        .map_err(|e| format!("dependency resolution failed for {root}: {e}"))
+}
+
+/// Resolves all transitive dependencies for multiple root packages.
+/// Returns a unified map of package name → resolved version.
+pub fn resolve_all(
+    roots: &[String],
+    index: &HashMap<String, Package>,
+) -> Result<HashMap<String, RVersion>, String> {
+    let mut all: HashMap<String, RVersion> = HashMap::new();
     for root in roots {
-        all.insert(root.clone());
-        for dep in resolve(root, index) {
-            all.insert(dep);
+        let resolved = resolve(root, index)?;
+        for (name, version) in resolved {
+            all.insert(name, version);
         }
     }
-    all.into_iter().collect()
+    Ok(all)
 }
 
 #[cfg(test)]
@@ -75,41 +133,71 @@ mod tests {
     #[test]
     fn test_resolve_transitive_deps() {
         let index = make_index();
-        let mut deps = resolve("ggplot2", &index);
-        deps.sort();
-        assert_eq!(deps, vec!["rlang", "scales"]);
+        let resolved = resolve("ggplot2", &index).unwrap();
+        assert!(resolved.contains_key("rlang"));
+        assert!(resolved.contains_key("scales"));
     }
 
     #[test]
     fn test_resolve_deduplicates() {
         // rlang is a dep of both ggplot2 and scales — should only appear once
         let index = make_index();
-        let deps = resolve("ggplot2", &index);
-        let rlang_count = deps.iter().filter(|d| *d == "rlang").count();
-        assert_eq!(rlang_count, 1);
+        let resolved = resolve("ggplot2", &index).unwrap();
+        assert_eq!(resolved.keys().filter(|k| *k == "rlang").count(), 1);
     }
 
     #[test]
-    fn test_resolve_excludes_root() {
+    fn test_resolve_includes_root() {
+        // pubgrub returns the root package itself in the solution
         let index = make_index();
-        let deps = resolve("ggplot2", &index);
-        assert!(!deps.contains(&"ggplot2".to_string()));
+        let resolved = resolve("ggplot2", &index).unwrap();
+        assert!(resolved.contains_key("ggplot2"));
     }
 
     #[test]
-    fn test_resolve_unknown_package_returns_empty() {
+    fn test_resolve_unknown_package_returns_error() {
         let index = make_index();
-        let deps = resolve("nonexistent", &index);
-        assert!(deps.is_empty());
+        assert!(resolve("nonexistent", &index).is_err());
     }
 
     #[test]
     fn test_resolve_all_unions_results() {
         let index = make_index();
         let roots = vec!["ggplot2".to_string(), "scales".to_string()];
-        let all = resolve_all(&roots, &index);
-        assert!(all.contains(&"ggplot2".to_string()));
-        assert!(all.contains(&"scales".to_string()));
-        assert!(all.contains(&"rlang".to_string()));
+        let all = resolve_all(&roots, &index).unwrap();
+        assert!(all.contains_key("ggplot2"));
+        assert!(all.contains_key("scales"));
+        assert!(all.contains_key("rlang"));
+    }
+
+    #[test]
+    fn test_resolve_version_constraint_satisfied() {
+        use crate::version::{Op, VersionReq};
+        let mut index = make_index();
+        // scales requires rlang >= 1.0.0 — 1.1.4 satisfies this
+        index.get_mut("scales").unwrap().deps = vec![Dep::new(
+            "rlang".to_string(),
+            Some(VersionReq {
+                op: Op::Gte,
+                version: RVersion::parse("1.0.0").unwrap(),
+            }),
+        )];
+        let resolved = resolve("scales", &index).unwrap();
+        assert_eq!(resolved["rlang"], RVersion::parse("1.1.4").unwrap());
+    }
+
+    #[test]
+    fn test_resolve_version_constraint_unsatisfied() {
+        use crate::version::{Op, VersionReq};
+        let mut index = make_index();
+        // scales requires rlang >= 99.0 — 1.1.4 does NOT satisfy this
+        index.get_mut("scales").unwrap().deps = vec![Dep::new(
+            "rlang".to_string(),
+            Some(VersionReq {
+                op: Op::Gte,
+                version: RVersion::parse("99.0").unwrap(),
+            }),
+        )];
+        assert!(resolve("scales", &index).is_err());
     }
 }

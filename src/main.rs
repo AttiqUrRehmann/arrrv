@@ -66,11 +66,19 @@ fn main() {
         Commands::Install { package } => {
             let t = Instant::now();
             let index = fetch_cran_index();
-            let deps = resolve(&package, &index);
-            let packages = build_urls(&deps, &index);
+            let resolved = resolve(&package, &index).unwrap_or_else(|e| {
+                eprintln!("error: {e}");
+                std::process::exit(1);
+            });
+            let dep_names: Vec<String> = resolved
+                .keys()
+                .filter(|n| *n != &package)
+                .cloned()
+                .collect();
+            let packages = build_urls(&dep_names, &index);
             println!(
                 "Resolved {} packages in {}",
-                deps.len(),
+                resolved.len(),
                 fmt_duration(t.elapsed().as_millis())
             );
 
@@ -103,14 +111,17 @@ fn main() {
 
             let t = Instant::now();
             let index = fetch_cran_index();
-            let all = resolve_all(&roots, &index);
+            let resolved = resolve_all(&roots, &index).unwrap_or_else(|e| {
+                eprintln!("error: {e}");
+                std::process::exit(1);
+            });
             println!(
                 "Resolved {} packages in {}",
-                all.len(),
+                resolved.len(),
                 fmt_duration(t.elapsed().as_millis())
             );
 
-            write_lockfile(&roots, &all, &index);
+            write_lockfile(&roots, &resolved, &index);
         }
 
         Commands::Sync => {
