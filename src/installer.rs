@@ -165,12 +165,12 @@ pub fn download_and_install(
     let mp = MultiProgress::new();
 
     let overall_style =
-        ProgressStyle::with_template("  {msg:<32} [{bar:40.green/dim}] {pos}/{len}")
+        ProgressStyle::with_template("  {msg:<32.32} [{wide_bar:.green/dim}] {pos}/{len:>3}")
             .unwrap()
             .progress_chars("━━╌");
 
     let pkg_style = ProgressStyle::with_template(
-        "  {spinner:.green} {msg:<30} [{bar:40.green/dim}] {bytes:>8} / {total_bytes}",
+        "  {spinner:.green} {msg:<30.30} [{wide_bar:.green/dim}] {bytes:>10}/{total_bytes:<10}",
     )
     .unwrap()
     .progress_chars("━━╌");
