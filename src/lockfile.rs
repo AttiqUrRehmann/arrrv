@@ -39,10 +39,15 @@ fn write_lockfile_to(
     sorted_names.sort();
 
     for name in &sorted_names {
-        let version = &resolved[*name];
+        // Use the original version string from the index (preserves dashes e.g. "2.23-26").
+        // Fall back to RVersion Display only if somehow not in the index.
+        let version_str = index
+            .get(*name)
+            .map(|p| p.version.as_str())
+            .unwrap_or_else(|| "0");
         out.push_str("[[package]]\n");
         out.push_str(&format!("name = \"{}\"\n", name));
-        out.push_str(&format!("version = \"{}\"\n", version));
+        out.push_str(&format!("version = \"{}\"\n", version_str));
         // write deps that are also in the resolved set
         if let Some(pkg) = index.get(*name)
             && !pkg.deps.is_empty()
@@ -168,6 +173,22 @@ mod tests {
         assert!(contents.contains("[[package]]"));
         assert!(contents.contains("name = \"ggplot2\""));
         assert!(contents.contains("version = \"3.5.1\""));
+    }
+
+    #[test]
+    fn test_write_lockfile_preserves_dash_version() {
+        // "2.23-26" must not become "2.23.26" — the original string must be preserved
+        // so that download URLs remain valid.
+        let tmp = tempfile::NamedTempFile::new().unwrap();
+        let index = make_index(&[("nlme", "2.23-26")]);
+        let resolved = make_resolved(&[("nlme", "2.23-26")]);
+        let roots = vec!["nlme".to_string()];
+
+        write_lockfile_to(tmp.path(), &roots, &resolved, &index);
+
+        let contents = std::fs::read_to_string(tmp.path()).unwrap();
+        assert!(contents.contains("version = \"2.23-26\""));
+        assert!(!contents.contains("2.23.26"));
     }
 
     #[test]
