@@ -131,10 +131,17 @@ fn parse_lockfile(text: &str) -> Vec<(String, String, String)> {
         #[allow(dead_code)]
         dependencies: Vec<toml::Value>,
     }
-    #[derive(Deserialize, Default)]
+    #[derive(Deserialize)]
     struct LockedSource {
         #[serde(default = "default_registry")]
         registry: String,
+    }
+    impl Default for LockedSource {
+        fn default() -> Self {
+            LockedSource {
+                registry: default_registry(),
+            }
+        }
     }
     fn default_registry() -> String {
         format!("{}/latest", RSPM_BASE)
