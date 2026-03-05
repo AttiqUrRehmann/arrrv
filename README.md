@@ -79,8 +79,8 @@ arrrv --verbose sync   # show per-package source (cache vs download)
 
 ## How it works
 
-- **`arrrv lock`** fetches the CRAN package index, resolves all transitive dependencies, and writes `arrrv.lock` with exact versions and the full dependency graph.
-- **`arrrv sync`** reads `arrrv.lock` directly — no network call required — and installs packages into `.arrrv/library/`. Packages are downloaded once to a global cache (`~/Library/Caches/arrrv/` on macOS) and hard-linked into the project library, so repeated installs across projects are instant.
+- **`arrrv lock`** fetches the CRAN package index, resolves all transitive dependencies using the PubGrub algorithm, and writes `arrrv.lock` with exact versions, the full dependency graph, and a per-package [RSPM](https://packagemanager.posit.co) snapshot URL derived from each package's CRAN upload date. This makes installs reproducible even as CRAN evolves.
+- **`arrrv sync`** reads `arrrv.lock` directly — no CRAN fetch required — and installs packages into `.arrrv/library/` from the pinned RSPM binary URLs. Packages are downloaded once to a global cache (`~/Library/Caches/arrrv/` on macOS) and hard-linked into the project library, so repeated installs across projects are instant.
 
 ## Comparison
 
@@ -89,6 +89,7 @@ arrrv --verbose sync   # show per-package source (cache vs download)
 | Parallel downloads | ❌ | ❌ | ✅ | ✅ |
 | Global binary cache | ❌ | ❌ | ❌ | ✅ |
 | Lockfile | ❌ | ✅ | ❌ | ✅ |
+| Reproducible binary installs | ❌ | ⚠️ source only | ❌ | ✅ |
 | Lock/sync separation | ❌ | ❌ | ❌ | ✅ |
 | R version management | ❌ | ❌ | ❌ | 🚧 planned |
 
@@ -97,16 +98,17 @@ arrrv --verbose sync   # show per-package source (cache vs download)
 Working MVP on macOS (arm64 + x86_64). Active development — see the [GitHub issues](https://github.com/A-Fisk/arrrv/issues) for the roadmap.
 
 **What works:**
-- `arrrv lock` — resolve + write lockfile
-- `arrrv sync` — restore from lockfile (no CRAN fetch on warm runs)
+- `arrrv lock` — PubGrub dependency resolution + write lockfile with pinned RSPM binary URLs
+- `arrrv sync` — restore from lockfile using pinned RSPM binaries (no CRAN fetch on warm runs)
 - `arrrv install` — one-off package install
 - `arrrv run` — run scripts with the project library
+- Version constraint solving (e.g. `"ggplot2 (>= 3.4)"` in `arrrv.toml`)
 - Global package cache with hard-linking
-- 26 unit tests, CI on GitHub Actions
+- 50 unit tests, CI on GitHub Actions
 
 **Coming next:**
-- Version constraint solving (PubGrub resolver)
 - `arrrv add` / `arrrv remove`
+- Bioconductor package support
 - R version management
 
 ## Development
