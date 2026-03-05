@@ -6,7 +6,7 @@ use std::collections::HashMap;
 use std::io::Read;
 use std::time::Duration;
 
-#[derive(Serialize, Deserialize)]
+#[derive(Clone, Serialize, Deserialize)]
 pub struct Package {
     pub version: String,
     pub deps: Vec<Dep>,

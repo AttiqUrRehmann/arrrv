@@ -9,7 +9,7 @@ mod lockfile;
 mod resolver;
 mod version;
 
-use config::{parse_dep_name, read_config};
+use config::{parse_dep, parse_dep_name, read_config};
 use index::fetch_cran_index;
 use installer::{build_urls, build_urls_from_pairs, download_and_install};
 use lockfile::{lockfile_is_fresh, read_lockfile, write_lockfile};
@@ -102,16 +102,17 @@ fn main() {
 
         Commands::Lock => {
             let config = read_config();
-            let roots: Vec<String> = config
+            let root_deps: Vec<_> = config
                 .project
                 .dependencies
                 .iter()
-                .map(|d| parse_dep_name(d))
+                .map(|d| parse_dep(d))
                 .collect();
+            let root_names: Vec<String> = root_deps.iter().map(|d| d.name.clone()).collect();
 
             let t = Instant::now();
             let index = fetch_cran_index();
-            let resolved = resolve_all(&roots, &index).unwrap_or_else(|e| {
+            let resolved = resolve_all(&root_deps, &index).unwrap_or_else(|e| {
                 eprintln!("error: {e}");
                 std::process::exit(1);
             });
@@ -121,7 +122,7 @@ fn main() {
                 fmt_duration(t.elapsed().as_millis())
             );
 
-            write_lockfile(&roots, &resolved, &index);
+            write_lockfile(&root_names, &resolved, &index);
         }
 
         Commands::Sync => {

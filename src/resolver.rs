@@ -79,20 +79,28 @@ pub fn resolve(
         .map_err(|e| format!("dependency resolution failed for {root}: {e}"))
 }
 
-/// Resolves all transitive dependencies for multiple root packages.
-/// Returns a unified map of package name → resolved version.
+/// Resolves all transitive dependencies for multiple root packages, each with
+/// an optional version constraint from arrrv.toml. Uses a synthetic root package
+/// so that all constraints are fed into a single PubGrub resolution pass.
 pub fn resolve_all(
-    roots: &[String],
+    roots: &[crate::version::Dep],
     index: &HashMap<String, Package>,
 ) -> Result<HashMap<String, RVersion>, String> {
-    let mut all: HashMap<String, RVersion> = HashMap::new();
-    for root in roots {
-        let resolved = resolve(root, index)?;
-        for (name, version) in resolved {
-            all.insert(name, version);
-        }
-    }
-    Ok(all)
+    // Build a synthetic "__root__" package whose deps are the user's requirements.
+    // This lets PubGrub enforce all root constraints in one pass.
+    let synthetic_root = "__root__".to_string();
+    let mut augmented = index.clone();
+    augmented.insert(
+        synthetic_root.clone(),
+        Package {
+            version: "0".to_string(),
+            deps: roots.to_vec(),
+        },
+    );
+
+    let mut resolved = resolve(&synthetic_root, &augmented)?;
+    resolved.remove(&synthetic_root);
+    Ok(resolved)
 }
 
 #[cfg(test)]
@@ -163,11 +171,20 @@ mod tests {
     #[test]
     fn test_resolve_all_unions_results() {
         let index = make_index();
-        let roots = vec!["ggplot2".to_string(), "scales".to_string()];
+        let roots = vec![dep("ggplot2"), dep("scales")];
         let all = resolve_all(&roots, &index).unwrap();
         assert!(all.contains_key("ggplot2"));
         assert!(all.contains_key("scales"));
         assert!(all.contains_key("rlang"));
+    }
+
+    #[test]
+    fn test_resolve_all_enforces_root_constraints() {
+        use crate::version::Op;
+        let index = make_index();
+        // user pins rlang >= 99.0 in arrrv.toml — should fail at the root level
+        let roots = vec![constrained("rlang", Op::Gte, "99.0")];
+        assert!(resolve_all(&roots, &index).is_err());
     }
 
     #[test]
