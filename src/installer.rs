@@ -232,7 +232,7 @@ mod tests {
                     name.to_string(),
                     Package {
                         version: version.to_string(),
-                        deps: vec![],
+                        deps: vec![], // no deps needed for URL-building tests
                     },
                 )
             })

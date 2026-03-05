@@ -7,6 +7,7 @@ mod index;
 mod installer;
 mod lockfile;
 mod resolver;
+mod version;
 
 use config::{parse_dep_name, read_config};
 use index::fetch_cran_index;

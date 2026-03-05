@@ -1,4 +1,5 @@
 use crate::cache::cache_dir;
+use crate::version::Dep;
 use flate2::read::GzDecoder;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
@@ -8,7 +9,7 @@ use std::time::Duration;
 #[derive(Serialize, Deserialize)]
 pub struct Package {
     pub version: String,
-    pub deps: Vec<String>,
+    pub deps: Vec<Dep>,
 }
 
 pub fn parse_packages(text: &str) -> HashMap<String, Package> {
@@ -31,7 +32,7 @@ pub fn parse_packages(text: &str) -> HashMap<String, Package> {
 
         let mut name = None;
         let mut version = None;
-        let mut deps: Vec<String> = Vec::new();
+        let mut deps: Vec<Dep> = Vec::new();
 
         for line in joined.lines() {
             if let Some((key, val)) = line.split_once(": ") {
@@ -39,13 +40,18 @@ pub fn parse_packages(text: &str) -> HashMap<String, Package> {
                     "Package" => name = Some(val.to_string()),
                     "Version" => version = Some(val.to_string()),
                     "Imports" | "Depends" => {
-                        for dep in val.split(',') {
-                            let dep_name = dep
-                                .trim()
-                                .split_once(' ')
-                                .map(|(n, _)| n)
-                                .unwrap_or(dep.trim())
-                                .to_string();
+                        for raw in val.split(',') {
+                            let raw = raw.trim();
+                            // split "rlang (>= 1.1.0)" into name and optional constraint
+                            let (dep_name, req) = if let Some((name, rest)) = raw.split_once('(') {
+                                let req = rest.trim_end_matches(')').trim();
+                                (
+                                    name.trim().to_string(),
+                                    crate::version::VersionReq::parse(req),
+                                )
+                            } else {
+                                (raw.to_string(), None)
+                            };
                             let base_packages = [
                                 "R",
                                 "base",
@@ -60,7 +66,7 @@ pub fn parse_packages(text: &str) -> HashMap<String, Package> {
                                 "compiler",
                             ];
                             if !base_packages.contains(&dep_name.as_str()) && !dep_name.is_empty() {
-                                deps.push(dep_name);
+                                deps.push(Dep::new(dep_name, req));
                             }
                         }
                     }
@@ -131,16 +137,30 @@ mod tests {
         let index = parse_packages(text);
         let pkg = index.get("ggplot2").unwrap();
         assert_eq!(pkg.version, "3.5.1");
-        assert!(pkg.deps.contains(&"rlang".to_string()));
-        assert!(pkg.deps.contains(&"scales".to_string()));
+        assert!(pkg.deps.iter().any(|d| d.name == "rlang"));
+        assert!(pkg.deps.iter().any(|d| d.name == "scales"));
     }
 
     #[test]
-    fn test_parse_strips_version_constraints() {
+    fn test_parse_preserves_version_constraints() {
+        use crate::version::{Op, RVersion};
         let text = "Package: foo\nVersion: 1.0\nImports: rlang (>= 1.1.0)\n";
         let index = parse_packages(text);
         let pkg = index.get("foo").unwrap();
-        assert_eq!(pkg.deps, vec!["rlang"]);
+        assert_eq!(pkg.deps.len(), 1);
+        assert_eq!(pkg.deps[0].name, "rlang");
+        let req = pkg.deps[0].req.as_ref().unwrap();
+        assert!(matches!(req.op, Op::Gte));
+        assert_eq!(req.version, RVersion::parse("1.1.0").unwrap());
+    }
+
+    #[test]
+    fn test_parse_dep_without_constraint() {
+        let text = "Package: foo\nVersion: 1.0\nImports: rlang\n";
+        let index = parse_packages(text);
+        let pkg = index.get("foo").unwrap();
+        assert_eq!(pkg.deps[0].name, "rlang");
+        assert!(pkg.deps[0].req.is_none());
     }
 
     #[test]
@@ -148,9 +168,9 @@ mod tests {
         let text = "Package: foo\nVersion: 1.0\nDepends: R (>= 4.0), methods, rlang\n";
         let index = parse_packages(text);
         let pkg = index.get("foo").unwrap();
-        assert!(!pkg.deps.contains(&"R".to_string()));
-        assert!(!pkg.deps.contains(&"methods".to_string()));
-        assert!(pkg.deps.contains(&"rlang".to_string()));
+        assert!(!pkg.deps.iter().any(|d| d.name == "R"));
+        assert!(!pkg.deps.iter().any(|d| d.name == "methods"));
+        assert!(pkg.deps.iter().any(|d| d.name == "rlang"));
     }
 
     #[test]

@@ -15,8 +15,8 @@ pub fn resolve(root: &str, index: &HashMap<String, Package>) -> Vec<String> {
 
         if let Some(pkg) = index.get(&name) {
             for dep in &pkg.deps {
-                if !visited.contains(dep) {
-                    queue.push_back(dep.clone());
+                if !visited.contains(&dep.name) {
+                    queue.push_back(dep.name.clone());
                 }
             }
         }
@@ -40,6 +40,11 @@ pub fn resolve_all(roots: &[String], index: &HashMap<String, Package>) -> Vec<St
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::version::Dep;
+
+    fn dep(name: &str) -> Dep {
+        Dep::new(name.to_string(), None)
+    }
 
     fn make_index() -> HashMap<String, Package> {
         let mut index = HashMap::new();
@@ -47,7 +52,7 @@ mod tests {
             "ggplot2".to_string(),
             Package {
                 version: "3.5.1".to_string(),
-                deps: vec!["rlang".to_string(), "scales".to_string()],
+                deps: vec![dep("rlang"), dep("scales")],
             },
         );
         index.insert(
@@ -61,7 +66,7 @@ mod tests {
             "scales".to_string(),
             Package {
                 version: "1.3.0".to_string(),
-                deps: vec!["rlang".to_string()],
+                deps: vec![dep("rlang")],
             },
         );
         index

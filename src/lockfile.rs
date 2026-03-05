@@ -37,12 +37,13 @@ fn write_lockfile_to(
             out.push_str(&format!("name = \"{}\"\n", name));
             out.push_str(&format!("version = \"{}\"\n", pkg.version));
             if !pkg.deps.is_empty() {
-                let mut sorted_deps = pkg.deps.clone();
-                sorted_deps.sort();
+                let mut sorted_dep_names: Vec<&str> =
+                    pkg.deps.iter().map(|d| d.name.as_str()).collect();
+                sorted_dep_names.sort();
                 // only include deps that are in the resolved package list
-                let resolved_deps: Vec<_> = sorted_deps
-                    .iter()
-                    .filter(|d| packages.contains(d))
+                let resolved_deps: Vec<&str> = sorted_dep_names
+                    .into_iter()
+                    .filter(|d| packages.contains(&d.to_string()))
                     .collect();
                 if !resolved_deps.is_empty() {
                     out.push_str("dependencies = [");
@@ -128,7 +129,7 @@ mod tests {
                     name.to_string(),
                     Package {
                         version: version.to_string(),
-                        deps: vec![],
+                        deps: vec![], // no deps needed for lockfile format tests
                     },
                 )
             })
