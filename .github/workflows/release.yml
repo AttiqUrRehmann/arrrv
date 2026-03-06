@@ -7,7 +7,7 @@ on:
   workflow_dispatch:
     inputs:
       tag:
-        description: 'Tag to release'
+        description: "Tag to release"
         required: true
 
 permissions:
@@ -59,9 +59,9 @@ jobs:
       matrix:
         include:
           - target: aarch64-apple-darwin
-            runs-on: macos-latest-large
+            runs-on: macos-latest
           - target: x86_64-apple-darwin
-            runs-on: macos-13
+            runs-on: macos-15-intel
           - target: x86_64-unknown-linux-gnu
             runs-on: ubuntu-latest
 
@@ -76,15 +76,7 @@ jobs:
       - name: Build binary
         run: cargo build --release --target ${{ matrix.target }}
 
-      - name: Create tarball (macOS)
-        if: startsWith(matrix.target, 'aarch64-apple-darwin') || startsWith(matrix.target, 'x86_64-apple-darwin')
-        run: |
-          mkdir -p arrrv-${{ matrix.target }}/bin
-          cp target/${{ matrix.target }}/release/arrrv arrrv-${{ matrix.target }}/bin/
-          tar czf arrrv-${{ matrix.target }}.tar.gz arrrv-${{ matrix.target }}/
-
-      - name: Create tarball (Linux)
-        if: startsWith(matrix.target, 'x86_64-unknown-linux-gnu')
+      - name: Create tarball
         run: |
           mkdir -p arrrv-${{ matrix.target }}/bin
           cp target/${{ matrix.target }}/release/arrrv arrrv-${{ matrix.target }}/bin/
@@ -110,19 +102,24 @@ jobs:
         with:
           path: artifacts
 
+      - name: Flatten artifact files
+        run: |
+          mkdir -p release-assets
+          find artifacts -name "*.tar.gz" -exec cp {} release-assets/ \;
+
       - name: Generate installer script
         run: |
           cat > install.sh << 'EOF'
           #!/bin/bash
           set -e
-          
+
           REPO="A-Fisk/arrrv"
           TAG="${1:-latest}"
-          
+
           if [ "$TAG" = "latest" ]; then
             TAG=$(curl -s https://api.github.com/repos/$REPO/releases/latest | grep '"tag_name"' | sed -E 's/.*"([^"]+)".*/\1/')
           fi
-          
+
           case "$(uname -s)" in
             Darwin)
               case "$(uname -m)" in
@@ -146,22 +143,22 @@ jobs:
               exit 1
               ;;
           esac
-          
+
           INSTALL_DIR="${INSTALL_DIR:-$HOME/.local/bin}"
           mkdir -p "$INSTALL_DIR"
-          
+
           URL="https://github.com/$REPO/releases/download/$TAG/arrrv-$TARGET.tar.gz"
           echo "Downloading arrrv $TAG for $TARGET..."
-          
+
           TEMP_DIR=$(mktemp -d)
           trap "rm -rf $TEMP_DIR" EXIT
-          
+
           curl -LsSf "$URL" -o "$TEMP_DIR/arrrv.tar.gz"
           tar -xzf "$TEMP_DIR/arrrv.tar.gz" -C "$TEMP_DIR"
-          
+
           cp "$TEMP_DIR/arrrv-$TARGET/bin/arrrv" "$INSTALL_DIR/arrrv"
           chmod +x "$INSTALL_DIR/arrrv"
-          
+
           echo "✓ arrrv installed to $INSTALL_DIR/arrrv"
           echo ""
           echo "Make sure $INSTALL_DIR is in your \$PATH:"
@@ -171,9 +168,11 @@ jobs:
           EOF
           chmod +x install.sh
 
-      - name: Upload installer
+      - name: Upload binaries and installer to GitHub Release
         uses: softprops/action-gh-release@v1
         with:
-          files: install.sh
+          files: |
+            release-assets/*.tar.gz
+            install.sh
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
