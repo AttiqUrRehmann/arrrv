@@ -1,5 +1,9 @@
 use crate::version::Dep;
 use serde::Deserialize;
+use std::io::ErrorKind;
+use std::path::Path;
+
+pub const CONFIG_FILE: &str = "arrrv.toml";
 
 #[derive(Deserialize)]
 pub struct ArrrConfig {
@@ -15,10 +19,37 @@ pub struct ProjectConfig {
     pub dependencies: Vec<String>,
 }
 
-pub fn read_config() -> ArrrConfig {
-    let text = std::fs::read_to_string("arrrv.toml")
-        .expect("could not find arrrv.toml — are you in the right directory?");
-    toml::from_str(&text).expect("failed to parse arrrv.toml")
+pub fn read_config() -> Result<ArrrConfig, String> {
+    let text = std::fs::read_to_string(CONFIG_FILE).map_err(|e| {
+        if e.kind() == ErrorKind::NotFound {
+            format!(
+                "could not find {} in this directory — run `arrrv init` first",
+                CONFIG_FILE
+            )
+        } else {
+            format!("failed to read {}: {}", CONFIG_FILE, e)
+        }
+    })?;
+    toml::from_str(&text).map_err(|e| format!("failed to parse {}: {}", CONFIG_FILE, e))
+}
+
+pub fn init_config(project_name: &str) -> Result<(), String> {
+    if Path::new(CONFIG_FILE).exists() {
+        return Err(format!(
+            "{} already exists in this directory",
+            CONFIG_FILE
+        ));
+    }
+
+    let text = default_config_toml(project_name);
+    std::fs::write(CONFIG_FILE, text).map_err(|e| format!("failed to write {}: {}", CONFIG_FILE, e))
+}
+
+fn default_config_toml(project_name: &str) -> String {
+    format!(
+        "[project]\nname = \"{}\"\nversion = \"0.1.0\"\nr-version = \">=4.3\"\ndependencies = []\n",
+        project_name
+    )
 }
 
 /// Parse a dependency string from arrrv.toml into a `Dep`.
@@ -48,6 +79,13 @@ mod tests {
 
     fn parse_config(text: &str) -> ArrrConfig {
         toml::from_str(text).expect("failed to parse arrrv.toml")
+    }
+
+    #[test]
+    fn test_default_config_toml() {
+        let toml = default_config_toml("my-project");
+        assert!(toml.contains("name = \"my-project\""));
+        assert!(toml.contains("dependencies = []"));
     }
 
     #[test]

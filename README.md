@@ -42,6 +42,9 @@ dependencies = [
 ### Commands
 
 ```sh
+# Create arrrv.toml in the current directory
+arrrv init
+
 # Resolve dependencies and write arrrv.lock
 arrrv lock
 
