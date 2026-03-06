@@ -10,7 +10,7 @@ mod lockfile;
 mod resolver;
 mod version;
 
-use config::{init_config, parse_dep, parse_dep_name, read_config};
+use config::{add_dependency, init_config, parse_dep, parse_dep_name, read_config, AddDependencyResult};
 use index::fetch_cran_index;
 use installer::{build_urls, build_urls_from_pairs, download_and_install};
 use lockfile::{lockfile_is_fresh, read_lockfile, write_lockfile};
@@ -196,11 +196,19 @@ fn main() {
         }
 
         Commands::Add { package } => {
-            println!(
-                "add \"{}\" to your arrrv.toml dependencies, then run `arrrv lock && arrrv sync`",
-                package
-            );
-            println!("  dependencies = [\"{}\"]", package);
+            match add_dependency(&package).unwrap_or_else(|e| {
+                eprintln!("error: {e}");
+                std::process::exit(1);
+            }) {
+                AddDependencyResult::Added => {
+                    println!("added \"{}\" to arrrv.toml", package);
+                    println!("next: run `arrrv lock && arrrv sync`");
+                }
+                AddDependencyResult::AlreadyPresent => {
+                    println!("\"{}\" is already in arrrv.toml", package);
+                    println!("next: run `arrrv lock && arrrv sync`");
+                }
+            }
         }
 
         Commands::Run { args } => {

@@ -2,6 +2,7 @@ use crate::version::Dep;
 use serde::Deserialize;
 use std::io::ErrorKind;
 use std::path::Path;
+use toml::value::{Table, Value};
 
 pub const CONFIG_FILE: &str = "arrrv.toml";
 
@@ -45,11 +46,75 @@ pub fn init_config(project_name: &str) -> Result<(), String> {
     std::fs::write(CONFIG_FILE, text).map_err(|e| format!("failed to write {}: {}", CONFIG_FILE, e))
 }
 
+pub enum AddDependencyResult {
+    Added,
+    AlreadyPresent,
+}
+
+pub fn add_dependency(dep: &str) -> Result<AddDependencyResult, String> {
+    let text = std::fs::read_to_string(CONFIG_FILE).map_err(|e| {
+        if e.kind() == ErrorKind::NotFound {
+            format!(
+                "could not find {} in this directory — run `arrrv init` first",
+                CONFIG_FILE
+            )
+        } else {
+            format!("failed to read {}: {}", CONFIG_FILE, e)
+        }
+    })?;
+    let (updated, added) = add_dependency_to_toml_text(&text, dep)?;
+    std::fs::write(CONFIG_FILE, updated).map_err(|e| format!("failed to write {}: {}", CONFIG_FILE, e))?;
+    if added {
+        Ok(AddDependencyResult::Added)
+    } else {
+        Ok(AddDependencyResult::AlreadyPresent)
+    }
+}
+
 fn default_config_toml(project_name: &str) -> String {
     format!(
         "[project]\nname = \"{}\"\nversion = \"0.1.0\"\nr-version = \">=4.3\"\ndependencies = []\n",
         project_name
     )
+}
+
+fn add_dependency_to_toml_text(text: &str, dep: &str) -> Result<(String, bool), String> {
+    let mut root: Value =
+        toml::from_str(text).map_err(|e| format!("failed to parse {}: {}", CONFIG_FILE, e))?;
+    let root_table = root
+        .as_table_mut()
+        .ok_or_else(|| format!("invalid {}: root must be a TOML table", CONFIG_FILE))?;
+
+    let project = root_table
+        .entry("project")
+        .or_insert_with(|| Value::Table(Table::new()));
+    let project_table = project
+        .as_table_mut()
+        .ok_or_else(|| format!("invalid {}: [project] must be a table", CONFIG_FILE))?;
+
+    let dependencies = project_table
+        .entry("dependencies")
+        .or_insert_with(|| Value::Array(Vec::new()));
+    let deps_array = dependencies
+        .as_array_mut()
+        .ok_or_else(|| format!("invalid {}: project.dependencies must be an array", CONFIG_FILE))?;
+
+    let new_name = parse_dep_name(dep);
+    let already_present = deps_array.iter().any(|v| {
+        v.as_str()
+            .map(|existing| parse_dep_name(existing) == new_name)
+            .unwrap_or(false)
+    });
+    if already_present {
+        let rendered = toml::to_string_pretty(&root)
+            .map_err(|e| format!("failed to serialize {}: {}", CONFIG_FILE, e))?;
+        return Ok((rendered, false));
+    }
+
+    deps_array.push(Value::String(dep.to_string()));
+    let rendered = toml::to_string_pretty(&root)
+        .map_err(|e| format!("failed to serialize {}: {}", CONFIG_FILE, e))?;
+    Ok((rendered, true))
 }
 
 /// Parse a dependency string from arrrv.toml into a `Dep`.
@@ -86,6 +151,22 @@ mod tests {
         let toml = default_config_toml("my-project");
         assert!(toml.contains("name = \"my-project\""));
         assert!(toml.contains("dependencies = []"));
+    }
+
+    #[test]
+    fn test_add_dependency_to_toml_text_adds_new_dep() {
+        let text = "[project]\nname = \"x\"\nversion = \"0.1.0\"\ndependencies = []\n";
+        let (updated, added) = add_dependency_to_toml_text(text, "ggplot2").unwrap();
+        assert!(added);
+        assert!(updated.contains("dependencies = [\"ggplot2\"]"));
+    }
+
+    #[test]
+    fn test_add_dependency_to_toml_text_no_duplicate_by_name() {
+        let text = "[project]\nname = \"x\"\nversion = \"0.1.0\"\ndependencies = [\"ggplot2>=3.4\"]\n";
+        let (updated, added) = add_dependency_to_toml_text(text, "ggplot2").unwrap();
+        assert!(!added);
+        assert!(updated.contains("ggplot2>=3.4"));
     }
 
     #[test]
