@@ -65,6 +65,25 @@ impl DependencyProvider for CranProvider<'_> {
     }
 }
 
+/// Formats the raw PubGrub no-solution report into a numbered, indented chain.
+/// Each "Because …" clause gets its own step, and each step is indented two
+/// more spaces than the previous one to make the dependency chain visually clear.
+/// The internal synthetic package name is replaced with "your project".
+fn format_no_solution(report: &str) -> String {
+    let mut out = String::new();
+    let mut step = 0usize;
+    for line in report.lines() {
+        if line.is_empty() {
+            continue;
+        }
+        let line = line.replace("__root__ 0", "your project");
+        let indent = "  ".repeat(step);
+        out.push_str(&format!("{}{}. {}\n", indent, step + 1, line));
+        step += 1;
+    }
+    out.trim_end().to_string()
+}
+
 /// Resolves all transitive dependencies of `root` and returns a map of
 /// package name → resolved version. Returns an error string if resolution fails.
 /// When `verbose` is true and there is no solution, the error includes the full
@@ -85,9 +104,12 @@ pub fn resolve(
         .map_err(|e| {
             if verbose && let pubgrub::PubGrubError::NoSolution(tree) = &e {
                 let report = DefaultStringReporter::report(tree);
-                return format!("dependency resolution failed for {root}:\n{report}");
+                return format!(
+                    "dependency resolution failed:\n{}",
+                    format_no_solution(&report)
+                );
             }
-            format!("dependency resolution failed for {root}: {e}")
+            format!("dependency resolution failed: {e}")
         })
 }
 
