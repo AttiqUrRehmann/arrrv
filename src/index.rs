@@ -55,15 +55,20 @@ pub fn parse_packages(text: &str) -> HashMap<String, Package> {
                             let base_packages = [
                                 "R",
                                 "base",
-                                "utils",
-                                "stats",
-                                "graphics",
-                                "grDevices",
-                                "methods",
-                                "datasets",
-                                "tools",
-                                "grid",
                                 "compiler",
+                                "datasets",
+                                "grDevices",
+                                "graphics",
+                                "grid",
+                                "methods",
+                                "parallel",
+                                "splines",
+                                "stats",
+                                "stats4",
+                                "tcltk",
+                                "tools",
+                                "translations",
+                                "utils",
                             ];
                             if !base_packages.contains(&dep_name.as_str()) && !dep_name.is_empty() {
                                 deps.push(Dep::new(dep_name, req));
@@ -170,6 +175,22 @@ mod tests {
         let pkg = index.get("foo").unwrap();
         assert!(!pkg.deps.iter().any(|d| d.name == "R"));
         assert!(!pkg.deps.iter().any(|d| d.name == "methods"));
+        assert!(pkg.deps.iter().any(|d| d.name == "rlang"));
+    }
+
+    #[test]
+    fn test_parse_filters_parallel_and_other_base() {
+        // parallel, splines, tcltk, stats4 ship with R and must not be treated
+        // as CRAN dependencies
+        let text = "Package: foo\nVersion: 1.0\nImports: parallel, splines, tcltk, stats4, rlang\n";
+        let index = parse_packages(text);
+        let pkg = index.get("foo").unwrap();
+        for base in &["parallel", "splines", "tcltk", "stats4"] {
+            assert!(
+                !pkg.deps.iter().any(|d| d.name == *base),
+                "{base} should be filtered out"
+            );
+        }
         assert!(pkg.deps.iter().any(|d| d.name == "rlang"));
     }
 
