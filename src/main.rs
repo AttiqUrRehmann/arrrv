@@ -67,7 +67,7 @@ fn main() {
         Commands::Install { package } => {
             let t = Instant::now();
             let index = fetch_cran_index();
-            let resolved = resolve(&package, &index).unwrap_or_else(|e| {
+            let resolved = resolve(&package, &index, verbose).unwrap_or_else(|e| {
                 eprintln!("error: {e}");
                 std::process::exit(1);
             });
@@ -113,7 +113,7 @@ fn main() {
 
             let t = Instant::now();
             let index = fetch_cran_index();
-            let resolved = resolve_all(&root_deps, &index).unwrap_or_else(|e| {
+            let resolved = resolve_all(&root_deps, &index, verbose).unwrap_or_else(|e| {
                 eprintln!("error: {e}");
                 std::process::exit(1);
             });
