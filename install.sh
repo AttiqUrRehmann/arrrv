@@ -1,7 +1,7 @@
 #!/bin/bash
 set -e
 
-REPO="AttiqUrRehmann/arrrv"
+REPO="A-Fisk/arrrv"
 TAG="${1:-latest}"
 
 if [ "$TAG" = "latest" ]; then
@@ -81,6 +81,7 @@ chmod +x "$INSTALL_DIR/arrrv"
 echo ""
 echo "✓ arrrv $TAG installed successfully!"
 echo ""
+
 echo "Binary location: $INSTALL_DIR/arrrv"
 echo ""
 
