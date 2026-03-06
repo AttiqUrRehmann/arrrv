@@ -2,7 +2,6 @@ use crate::version::Dep;
 use serde::Deserialize;
 use std::io::ErrorKind;
 use std::path::Path;
-use toml::value::{Table, Value};
 
 pub const CONFIG_FILE: &str = "arrrv.toml";
 
@@ -79,42 +78,271 @@ fn default_config_toml(project_name: &str) -> String {
 }
 
 fn add_dependency_to_toml_text(text: &str, dep: &str) -> Result<(String, bool), String> {
-    let mut root: Value =
+    let root: toml::Value =
         toml::from_str(text).map_err(|e| format!("failed to parse {}: {}", CONFIG_FILE, e))?;
-    let root_table = root
-        .as_table_mut()
-        .ok_or_else(|| format!("invalid {}: root must be a TOML table", CONFIG_FILE))?;
-
-    let project = root_table
-        .entry("project")
-        .or_insert_with(|| Value::Table(Table::new()));
-    let project_table = project
-        .as_table_mut()
-        .ok_or_else(|| format!("invalid {}: [project] must be a table", CONFIG_FILE))?;
-
-    let dependencies = project_table
-        .entry("dependencies")
-        .or_insert_with(|| Value::Array(Vec::new()));
-    let deps_array = dependencies
-        .as_array_mut()
-        .ok_or_else(|| format!("invalid {}: project.dependencies must be an array", CONFIG_FILE))?;
-
+    let deps_array = root
+        .get("project")
+        .and_then(|v| v.get("dependencies"))
+        .and_then(|v| v.as_array())
+        .ok_or_else(|| format!("invalid {}: missing [project].dependencies array", CONFIG_FILE))?;
+    let existing: Vec<String> = deps_array
+        .iter()
+        .map(|v| {
+            v.as_str()
+                .map(|s| s.to_string())
+                .ok_or_else(|| format!("invalid {}: dependencies entries must be strings", CONFIG_FILE))
+        })
+        .collect::<Result<_, _>>()?;
     let new_name = parse_dep_name(dep);
-    let already_present = deps_array.iter().any(|v| {
-        v.as_str()
-            .map(|existing| parse_dep_name(existing) == new_name)
-            .unwrap_or(false)
-    });
+    let already_present = existing.iter().any(|existing| parse_dep_name(existing) == new_name);
     if already_present {
-        let rendered = toml::to_string_pretty(&root)
-            .map_err(|e| format!("failed to serialize {}: {}", CONFIG_FILE, e))?;
-        return Ok((rendered, false));
+        return Ok((text.to_string(), false));
     }
 
-    deps_array.push(Value::String(dep.to_string()));
-    let rendered = toml::to_string_pretty(&root)
-        .map_err(|e| format!("failed to serialize {}: {}", CONFIG_FILE, e))?;
-    Ok((rendered, true))
+    let (body_start, body_end) = find_project_body_range(text)?;
+    let dep_field = find_dependencies_field(text, body_start, body_end);
+    let updated = if let Some(field) = dep_field {
+        rewrite_existing_dependencies(text, field, &existing, dep)?
+    } else {
+        insert_new_dependencies_field(text, body_start, body_end, dep)
+    };
+    Ok((updated, true))
+}
+
+#[derive(Clone, Copy)]
+struct DependenciesField {
+    open_bracket: usize,
+    close_bracket: usize,
+    key_indent_start: usize,
+    key_indent_end: usize,
+}
+
+fn find_project_body_range(text: &str) -> Result<(usize, usize), String> {
+    let spans = line_spans(text);
+    let mut project_header_end = None;
+    let mut project_body_end = text.len();
+
+    for (idx, (start, end)) in spans.iter().enumerate() {
+        let trimmed = text[*start..*end].trim();
+        if project_header_end.is_none() {
+            if trimmed == "[project]" {
+                project_header_end = Some(*end);
+            }
+            continue;
+        }
+        if trimmed.starts_with('[') && trimmed.ends_with(']') {
+            project_body_end = *start;
+            break;
+        }
+        if idx + 1 == spans.len() {
+            project_body_end = text.len();
+        }
+    }
+
+    match project_header_end {
+        Some(body_start) => Ok((body_start, project_body_end)),
+        None => Err(format!("invalid {}: missing [project] table", CONFIG_FILE)),
+    }
+}
+
+fn line_spans(text: &str) -> Vec<(usize, usize)> {
+    let mut spans = Vec::new();
+    let mut start = 0usize;
+    for (i, ch) in text.char_indices() {
+        if ch == '\n' {
+            spans.push((start, i + 1));
+            start = i + 1;
+        }
+    }
+    if start < text.len() {
+        spans.push((start, text.len()));
+    }
+    if spans.is_empty() {
+        spans.push((0, 0));
+    }
+    spans
+}
+
+fn find_dependencies_field(text: &str, body_start: usize, body_end: usize) -> Option<DependenciesField> {
+    for (line_start, line_end) in line_spans(text) {
+        if line_start < body_start || line_start >= body_end {
+            continue;
+        }
+        let line = &text[line_start..line_end];
+        let line_no_comment = line.split('#').next().unwrap_or(line);
+        let trimmed = line_no_comment.trim_start();
+        if !trimmed.starts_with("dependencies") {
+            continue;
+        }
+
+        let ws_len = line_no_comment.len() - trimmed.len();
+        let after_key = &trimmed["dependencies".len()..];
+        if !(after_key.is_empty() || after_key.starts_with(char::is_whitespace) || after_key.starts_with('=')) {
+            continue;
+        }
+
+        let Some(eq_rel) = line_no_comment.find('=') else {
+            continue;
+        };
+        let eq_abs = line_start + eq_rel;
+        let rest = &text[eq_abs + 1..body_end];
+        let Some(bracket_rel) = rest.find('[') else {
+            continue;
+        };
+        let open = eq_abs + 1 + bracket_rel;
+        let Some(close) = find_matching_bracket(text, open, body_end) else {
+            continue;
+        };
+        return Some(DependenciesField {
+            open_bracket: open,
+            close_bracket: close,
+            key_indent_start: line_start,
+            key_indent_end: line_start + ws_len,
+        });
+    }
+    None
+}
+
+fn find_matching_bracket(text: &str, open: usize, limit: usize) -> Option<usize> {
+    let mut depth = 0usize;
+    let mut in_string = false;
+    let mut escaped = false;
+    for (off, ch) in text[open..limit].char_indices() {
+        let abs = open + off;
+        if in_string {
+            if escaped {
+                escaped = false;
+                continue;
+            }
+            if ch == '\\' {
+                escaped = true;
+                continue;
+            }
+            if ch == '"' {
+                in_string = false;
+            }
+            continue;
+        }
+        match ch {
+            '"' => in_string = true,
+            '[' => depth += 1,
+            ']' => {
+                if depth == 0 {
+                    return None;
+                }
+                depth -= 1;
+                if depth == 0 {
+                    return Some(abs);
+                }
+            }
+            _ => {}
+        }
+    }
+    None
+}
+
+fn rewrite_existing_dependencies(
+    text: &str,
+    field: DependenciesField,
+    existing: &[String],
+    dep: &str,
+) -> Result<String, String> {
+    let key_indent = &text[field.key_indent_start..field.key_indent_end];
+    let current_array = &text[field.open_bracket..=field.close_bracket];
+    let multiline = current_array.contains('\n');
+    let item_indent = if multiline {
+        infer_item_indent(text, field.open_bracket, field.close_bracket)
+            .unwrap_or_else(|| format!("{}    ", key_indent))
+    } else {
+        String::new()
+    };
+
+    let mut all = existing.to_vec();
+    all.push(dep.to_string());
+    let replacement = render_dependencies_array(&all, multiline, key_indent, &item_indent);
+    let mut out = String::with_capacity(text.len() + dep.len() + 16);
+    out.push_str(&text[..field.open_bracket]);
+    out.push_str(&replacement);
+    out.push_str(&text[field.close_bracket + 1..]);
+    Ok(out)
+}
+
+fn infer_item_indent(text: &str, open: usize, close: usize) -> Option<String> {
+    let inside = &text[open + 1..close];
+    for line in inside.lines() {
+        if line.trim().is_empty() {
+            continue;
+        }
+        let indent_len = line.len() - line.trim_start().len();
+        return Some(line[..indent_len].to_string());
+    }
+    None
+}
+
+fn render_dependencies_array(
+    deps: &[String],
+    multiline: bool,
+    key_indent: &str,
+    item_indent: &str,
+) -> String {
+    if multiline {
+        let mut out = String::from("[\n");
+        for dep in deps {
+            out.push_str(item_indent);
+            out.push('"');
+            out.push_str(dep);
+            out.push_str("\",\n");
+        }
+        out.push_str(key_indent);
+        out.push(']');
+        out
+    } else {
+        let joined = deps
+            .iter()
+            .map(|d| format!("\"{}\"", d))
+            .collect::<Vec<_>>()
+            .join(", ");
+        format!("[{}]", joined)
+    }
+}
+
+fn insert_new_dependencies_field(text: &str, body_start: usize, body_end: usize, dep: &str) -> String {
+    let key_indent = infer_project_key_indent(text, body_start, body_end);
+    let item_indent = format!("{}    ", key_indent);
+    let dep_block = format!(
+        "{}dependencies = [\n{}\"{}\",\n{}]\n",
+        key_indent, item_indent, dep, key_indent
+    );
+    let mut out = String::with_capacity(text.len() + dep_block.len() + 1);
+    out.push_str(&text[..body_end]);
+    if body_end > body_start
+        && !text[..body_end].ends_with('\n')
+    {
+        out.push('\n');
+    }
+    if body_end > body_start
+        && !text[..body_end].ends_with("\n\n")
+    {
+        out.push('\n');
+    }
+    out.push_str(&dep_block);
+    out.push_str(&text[body_end..]);
+    out
+}
+
+fn infer_project_key_indent(text: &str, body_start: usize, body_end: usize) -> String {
+    for (line_start, line_end) in line_spans(text) {
+        if line_start < body_start || line_start >= body_end {
+            continue;
+        }
+        let line = &text[line_start..line_end];
+        if line.trim().is_empty() {
+            continue;
+        }
+        let indent_len = line.len() - line.trim_start().len();
+        return line[..indent_len].to_string();
+    }
+    String::new()
 }
 
 /// Parse a dependency string from arrrv.toml into a `Dep`.
@@ -167,6 +395,22 @@ mod tests {
         let (updated, added) = add_dependency_to_toml_text(text, "ggplot2").unwrap();
         assert!(!added);
         assert!(updated.contains("ggplot2>=3.4"));
+    }
+
+    #[test]
+    fn test_add_dependency_preserves_project_key_order() {
+        let text = "[project]\nname = \"myproject\"\nversion = \"0.1.0\"\ndescription = \"Example\"\n\ndependencies = [\n    \"ggplot2\",\n]\n";
+        let (updated, added) = add_dependency_to_toml_text(text, "dplyr").unwrap();
+        assert!(added);
+        let name_pos = updated.find("name = \"myproject\"").unwrap();
+        let version_pos = updated.find("version = \"0.1.0\"").unwrap();
+        let description_pos = updated.find("description = \"Example\"").unwrap();
+        let deps_pos = updated.find("dependencies = [").unwrap();
+        assert!(name_pos < version_pos);
+        assert!(version_pos < description_pos);
+        assert!(description_pos < deps_pos);
+        assert!(updated.contains("    \"ggplot2\","));
+        assert!(updated.contains("    \"dplyr\","));
     }
 
     #[test]
