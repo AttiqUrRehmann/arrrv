@@ -79,7 +79,7 @@ arrrv --verbose sync   # show per-package source (cache vs download)
 
 ## How it works
 
-- **`arrrv lock`** fetches the CRAN package index, resolves all transitive dependencies using the PubGrub algorithm, and writes `arrrv.lock` with exact versions, the full dependency graph, and a per-package [RSPM](https://packagemanager.posit.co) snapshot URL derived from each package's CRAN upload date. This makes installs reproducible even as CRAN evolves.
+- **`arrrv lock`** fetches the CRAN package index, resolves all transitive dependencies using the PubGrub algorithm, and writes `arrrv.lock` with exact versions and the full dependency graph. Each package entry records its pinned version and the [RSPM](https://packagemanager.posit.co) `cran/latest` registry — the exact version in the filename (e.g. `ggplot2_3.5.1.tgz`) is the reproducibility guarantee.
 - **`arrrv sync`** reads `arrrv.lock` directly — no CRAN fetch required — and installs packages into `.arrrv/library/` from the pinned RSPM binary URLs. Packages are downloaded once to a global cache (`~/Library/Caches/arrrv/` on macOS) and hard-linked into the project library, so repeated installs across projects are instant.
 
 ## Comparison
@@ -98,13 +98,13 @@ arrrv --verbose sync   # show per-package source (cache vs download)
 Working MVP on macOS (arm64 + x86_64). Active development — see the [GitHub issues](https://github.com/A-Fisk/arrrv/issues) for the roadmap.
 
 **What works:**
-- `arrrv lock` — PubGrub dependency resolution + write lockfile with pinned RSPM binary URLs
+- `arrrv lock` — PubGrub dependency resolution + write lockfile with exact versions and RSPM/latest URLs
 - `arrrv sync` — restore from lockfile using pinned RSPM binaries (no CRAN fetch on warm runs)
 - `arrrv install` — one-off package install
 - `arrrv run` — run scripts with the project library
-- Version constraint solving (e.g. `"ggplot2 (>= 3.4)"` in `arrrv.toml`)
+- Version constraint solving (`>=`, `==`, `<=`, `<`) including pinning to older versions via crandb
 - Global package cache with hard-linking
-- 50 unit tests, CI on GitHub Actions
+- 54 unit tests, CI on GitHub Actions
 
 **Coming next:**
 - `arrrv add` / `arrrv remove`
