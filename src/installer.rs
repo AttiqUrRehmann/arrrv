@@ -47,7 +47,6 @@ fn make_url(name: &str, version: &str, arch: &str, r_version: &str, registry: &s
 }
 
 /// Returns (name, version, url) tuples from lockfile (name, version, registry) triples.
-/// Uses the per-package RSPM registry URL stored in the lockfile.
 pub fn build_urls_from_pairs(
     packages: &[(String, String, String)],
 ) -> Vec<(String, String, String)> {
@@ -197,7 +196,24 @@ pub fn download_and_install(
         pb.set_style(pkg_style.clone());
         pb.set_message(name.clone());
 
-        let response = reqwest::blocking::get(url).unwrap();
+        let response = reqwest::blocking::get(url).unwrap_or_else(|e| {
+            pb.finish_and_clear();
+            eprintln!("\nerror: failed to download {} {}: {}", name, version, e);
+            std::process::exit(1);
+        });
+        if !response.status().is_success() {
+            pb.finish_and_clear();
+            eprintln!(
+                "\nerror: binary not available for {} {} (HTTP {})\n       \
+                 The package may not have a pre-built binary for your R version at this snapshot.\n       \
+                 URL: {}",
+                name,
+                version,
+                response.status(),
+                url
+            );
+            std::process::exit(1);
+        }
         let total = response.content_length().unwrap_or(0);
         pb.set_length(total);
 
@@ -212,7 +228,14 @@ pub fn download_and_install(
         std::fs::create_dir_all(&packages_dir).unwrap();
         let decoder = GzDecoder::new(bytes.as_slice());
         let mut archive = tar::Archive::new(decoder);
-        archive.unpack(&packages_dir).unwrap();
+        archive.unpack(&packages_dir).unwrap_or_else(|e| {
+            eprintln!(
+                "\nerror: failed to extract {} {}: {}\n       \
+                 The downloaded file may not be a valid binary package.",
+                name, version, e
+            );
+            std::process::exit(1);
+        });
         std::fs::rename(packages_dir.join(name), package_cache_path(name, version)).unwrap();
 
         // hard-link from cache into project library
