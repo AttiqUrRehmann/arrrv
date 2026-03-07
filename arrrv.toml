@@ -1,6 +1,6 @@
 [project]
 name = "test_project"
-version = "0.1.0"
+version = "0.1.0-alpha.1"
 r-version = ">=4.3"
 dependencies = [
     "ggplot2 >= 3.1",

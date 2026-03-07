@@ -10,7 +10,9 @@ mod lockfile;
 mod resolver;
 mod version;
 
-use config::{add_dependency, init_config, parse_dep, parse_dep_name, read_config, AddDependencyResult};
+use config::{
+    AddDependencyResult, add_dependency, init_config, parse_dep, parse_dep_name, read_config,
+};
 use index::fetch_cran_index;
 use installer::{build_urls, build_urls_from_pairs, download_and_install};
 use lockfile::{lockfile_is_fresh, read_lockfile, write_lockfile};
