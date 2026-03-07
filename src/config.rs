@@ -249,12 +249,12 @@ fn rewrite_existing_dependencies(
 ) -> Result<String, String> {
     let key_indent = &text[field.key_indent_start..field.key_indent_end];
     let current_array = &text[field.open_bracket..=field.close_bracket];
-    let multiline = current_array.contains('\n');
-    let item_indent = if multiline {
+    let multiline = true;
+    let item_indent = if current_array.contains('\n') {
         infer_item_indent(text, field.open_bracket, field.close_bracket)
             .unwrap_or_else(|| format!("{}    ", key_indent))
     } else {
-        String::new()
+        format!("{}    ", key_indent)
     };
 
     let mut all = existing.to_vec();
@@ -386,7 +386,7 @@ mod tests {
         let text = "[project]\nname = \"x\"\nversion = \"0.1.0\"\ndependencies = []\n";
         let (updated, added) = add_dependency_to_toml_text(text, "ggplot2").unwrap();
         assert!(added);
-        assert!(updated.contains("dependencies = [\"ggplot2\"]"));
+        assert!(updated.contains("dependencies = [\n    \"ggplot2\",\n]"));
     }
 
     #[test]
@@ -395,6 +395,14 @@ mod tests {
         let (updated, added) = add_dependency_to_toml_text(text, "ggplot2").unwrap();
         assert!(!added);
         assert!(updated.contains("ggplot2>=3.4"));
+    }
+
+    #[test]
+    fn test_add_dependency_converts_inline_array_to_multiline() {
+        let text = "[project]\nname = \"x\"\nversion = \"0.1.0\"\ndependencies = [\"ggplot2\"]\n";
+        let (updated, added) = add_dependency_to_toml_text(text, "dplyr").unwrap();
+        assert!(added);
+        assert!(updated.contains("dependencies = [\n    \"ggplot2\",\n    \"dplyr\",\n]"));
     }
 
     #[test]
