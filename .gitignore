@@ -1,0 +1,21 @@
+# Rust
+/target
+
+# Downloaded package libraries
+/arrrv_lib
+/.arrrv
+
+# Force-include lock files (overrides global *.lock rule)
+!Cargo.lock
+!arrrv.lock
+
+# macOS
+.DS_Store
+.AppleDouble
+.LSOverride
+
+# Vim
+*.swp
+*.swo
+*~
+.netrwhist
