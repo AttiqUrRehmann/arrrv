@@ -10,7 +10,9 @@ mod lockfile;
 mod resolver;
 mod version;
 
-use config::{parse_dep, parse_dep_name, read_config};
+use config::{
+    AddDependencyResult, add_dependency, init_config, parse_dep, parse_dep_name, read_config,
+};
 use index::fetch_cran_index;
 use installer::{build_urls, build_urls_from_pairs, download_and_install};
 use lockfile::{lockfile_is_fresh, read_lockfile, write_lockfile};
@@ -30,6 +32,8 @@ struct Cli {
 
 #[derive(Subcommand)]
 enum Commands {
+    /// Create a new arrrv.toml in the current directory
+    Init,
     /// Install an R package and its dependencies
     Install {
         /// Name of the package to install
@@ -64,6 +68,21 @@ fn main() {
     let verbose = cli.verbose;
 
     match cli.command {
+        Commands::Init => {
+            let project_name = std::env::current_dir()
+                .ok()
+                .and_then(|p| p.file_name().map(|n| n.to_string_lossy().to_string()))
+                .filter(|s| !s.is_empty())
+                .unwrap_or_else(|| "my-project".to_string());
+
+            init_config(&project_name).unwrap_or_else(|e| {
+                eprintln!("error: {e}");
+                std::process::exit(1);
+            });
+            println!("wrote arrrv.toml");
+            println!("next: run `arrrv lock` then `arrrv sync`");
+        }
+
         Commands::Install { package } => {
             let t = Instant::now();
             let index = fetch_cran_index();
@@ -102,7 +121,10 @@ fn main() {
         }
 
         Commands::Lock => {
-            let config = read_config();
+            let config = read_config().unwrap_or_else(|e| {
+                eprintln!("error: {e}");
+                std::process::exit(1);
+            });
             let root_deps: Vec<_> = config
                 .project
                 .dependencies
@@ -127,7 +149,10 @@ fn main() {
         }
 
         Commands::Sync => {
-            let config = read_config();
+            let config = read_config().unwrap_or_else(|e| {
+                eprintln!("error: {e}");
+                std::process::exit(1);
+            });
             let roots: Vec<String> = config
                 .project
                 .dependencies
@@ -173,11 +198,19 @@ fn main() {
         }
 
         Commands::Add { package } => {
-            println!(
-                "add \"{}\" to your arrrv.toml dependencies, then run `arrrv lock && arrrv sync`",
-                package
-            );
-            println!("  dependencies = [\"{}\"]", package);
+            match add_dependency(&package).unwrap_or_else(|e| {
+                eprintln!("error: {e}");
+                std::process::exit(1);
+            }) {
+                AddDependencyResult::Added => {
+                    println!("added \"{}\" to arrrv.toml", package);
+                    println!("next: run `arrrv lock && arrrv sync`");
+                }
+                AddDependencyResult::AlreadyPresent => {
+                    println!("\"{}\" is already in arrrv.toml", package);
+                    println!("next: run `arrrv lock && arrrv sync`");
+                }
+            }
         }
 
         Commands::Run { args } => {
