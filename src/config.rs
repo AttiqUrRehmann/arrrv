@@ -72,7 +72,7 @@ pub fn add_dependency(dep: &str) -> Result<AddDependencyResult, String> {
 
 fn default_config_toml(project_name: &str) -> String {
     format!(
-        "[project]\nname = \"{}\"\nversion = \"0.1.0\"\nr-version = \">=4.3\"\ndependencies = []\n",
+        "[project]\nname = \"{}\"\nversion = \"0.1.0-alpha.1\"\nr-version = \">=4.3\"\ndependencies = []\n",
         project_name
     )
 }
