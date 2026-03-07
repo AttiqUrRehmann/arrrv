@@ -1,7 +1,7 @@
 #!/bin/bash
 set -e
 
-REPO="AttiqUrRehmann/arrrv"
+REPO="A-Fisk/arrrv"
 TAG="${1:-latest}"
 
 if [ "$TAG" = "latest" ]; then
