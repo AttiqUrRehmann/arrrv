@@ -35,10 +35,7 @@ pub fn read_config() -> Result<ArrrConfig, String> {
 
 pub fn init_config(project_name: &str) -> Result<(), String> {
     if Path::new(CONFIG_FILE).exists() {
-        return Err(format!(
-            "{} already exists in this directory",
-            CONFIG_FILE
-        ));
+        return Err(format!("{} already exists in this directory", CONFIG_FILE));
     }
 
     let text = default_config_toml(project_name);
@@ -62,7 +59,8 @@ pub fn add_dependency(dep: &str) -> Result<AddDependencyResult, String> {
         }
     })?;
     let (updated, added) = add_dependency_to_toml_text(&text, dep)?;
-    std::fs::write(CONFIG_FILE, updated).map_err(|e| format!("failed to write {}: {}", CONFIG_FILE, e))?;
+    std::fs::write(CONFIG_FILE, updated)
+        .map_err(|e| format!("failed to write {}: {}", CONFIG_FILE, e))?;
     if added {
         Ok(AddDependencyResult::Added)
     } else {
@@ -84,17 +82,27 @@ fn add_dependency_to_toml_text(text: &str, dep: &str) -> Result<(String, bool), 
         .get("project")
         .and_then(|v| v.get("dependencies"))
         .and_then(|v| v.as_array())
-        .ok_or_else(|| format!("invalid {}: missing [project].dependencies array", CONFIG_FILE))?;
+        .ok_or_else(|| {
+            format!(
+                "invalid {}: missing [project].dependencies array",
+                CONFIG_FILE
+            )
+        })?;
     let existing: Vec<String> = deps_array
         .iter()
         .map(|v| {
-            v.as_str()
-                .map(|s| s.to_string())
-                .ok_or_else(|| format!("invalid {}: dependencies entries must be strings", CONFIG_FILE))
+            v.as_str().map(|s| s.to_string()).ok_or_else(|| {
+                format!(
+                    "invalid {}: dependencies entries must be strings",
+                    CONFIG_FILE
+                )
+            })
         })
         .collect::<Result<_, _>>()?;
     let new_name = parse_dep_name(dep);
-    let already_present = existing.iter().any(|existing| parse_dep_name(existing) == new_name);
+    let already_present = existing
+        .iter()
+        .any(|existing| parse_dep_name(existing) == new_name);
     if already_present {
         return Ok((text.to_string(), false));
     }
@@ -163,7 +171,11 @@ fn line_spans(text: &str) -> Vec<(usize, usize)> {
     spans
 }
 
-fn find_dependencies_field(text: &str, body_start: usize, body_end: usize) -> Option<DependenciesField> {
+fn find_dependencies_field(
+    text: &str,
+    body_start: usize,
+    body_end: usize,
+) -> Option<DependenciesField> {
     for (line_start, line_end) in line_spans(text) {
         if line_start < body_start || line_start >= body_end {
             continue;
@@ -177,7 +189,10 @@ fn find_dependencies_field(text: &str, body_start: usize, body_end: usize) -> Op
 
         let ws_len = line_no_comment.len() - trimmed.len();
         let after_key = &trimmed["dependencies".len()..];
-        if !(after_key.is_empty() || after_key.starts_with(char::is_whitespace) || after_key.starts_with('=')) {
+        if !(after_key.is_empty()
+            || after_key.starts_with(char::is_whitespace)
+            || after_key.starts_with('='))
+        {
             continue;
         }
 
@@ -306,7 +321,12 @@ fn render_dependencies_array(
     }
 }
 
-fn insert_new_dependencies_field(text: &str, body_start: usize, body_end: usize, dep: &str) -> String {
+fn insert_new_dependencies_field(
+    text: &str,
+    body_start: usize,
+    body_end: usize,
+    dep: &str,
+) -> String {
     let key_indent = infer_project_key_indent(text, body_start, body_end);
     let item_indent = format!("{}    ", key_indent);
     let dep_block = format!(
@@ -315,14 +335,10 @@ fn insert_new_dependencies_field(text: &str, body_start: usize, body_end: usize,
     );
     let mut out = String::with_capacity(text.len() + dep_block.len() + 1);
     out.push_str(&text[..body_end]);
-    if body_end > body_start
-        && !text[..body_end].ends_with('\n')
-    {
+    if body_end > body_start && !text[..body_end].ends_with('\n') {
         out.push('\n');
     }
-    if body_end > body_start
-        && !text[..body_end].ends_with("\n\n")
-    {
+    if body_end > body_start && !text[..body_end].ends_with("\n\n") {
         out.push('\n');
     }
     out.push_str(&dep_block);
@@ -391,7 +407,8 @@ mod tests {
 
     #[test]
     fn test_add_dependency_to_toml_text_no_duplicate_by_name() {
-        let text = "[project]\nname = \"x\"\nversion = \"0.1.0\"\ndependencies = [\"ggplot2>=3.4\"]\n";
+        let text =
+            "[project]\nname = \"x\"\nversion = \"0.1.0\"\ndependencies = [\"ggplot2>=3.4\"]\n";
         let (updated, added) = add_dependency_to_toml_text(text, "ggplot2").unwrap();
         assert!(!added);
         assert!(updated.contains("ggplot2>=3.4"));
