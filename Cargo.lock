@@ -60,7 +60,7 @@ dependencies = [
 
 [[package]]
 name = "arrrv"
-version = "0.1.0"
+version = "0.1.0-alpha.1"
 dependencies = [
  "bincode",
  "clap",
