@@ -3,7 +3,7 @@ use std::path::{Path, PathBuf};
 pub fn cache_dir() -> PathBuf {
     dirs::cache_dir()
         .expect("could not find cache directory")
-        .join("arrrv")
+        .join("ruv")
 }
 
 pub fn package_cache_path(name: &str, version: &str) -> PathBuf {
@@ -17,7 +17,7 @@ pub fn is_cached(name: &str, version: &str) -> bool {
 }
 
 /// Hard-links a cached package directory into the project library.
-/// Creates .arrrv/library/{name}/ with hard-links to every file in the cache.
+/// Creates .ruv/library/{name}/ with hard-links to every file in the cache.
 pub fn hard_link_into_library(name: &str, version: &str, lib_dir: &Path) {
     let src = package_cache_path(name, version);
     let dst = lib_dir.join(name);
@@ -48,7 +48,7 @@ mod tests {
     fn test_package_cache_path_format() {
         let path = package_cache_path("ggplot2", "3.5.1");
         let path_str = path.to_string_lossy();
-        assert!(path_str.ends_with("arrrv/packages/ggplot2_3.5.1"));
+        assert!(path_str.ends_with("ruv/packages/ggplot2_3.5.1"));
     }
 
     #[test]

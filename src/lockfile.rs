@@ -6,7 +6,7 @@ use std::path::Path;
 
 const RSPM_BASE: &str = "https://packagemanager.posit.co/cran";
 
-/// Write arrrv.lock from the pubgrub-resolved map of package → version.
+/// Write ruv.lock from the pubgrub-resolved map of package → version.
 /// All packages use RSPM/latest as their registry — the exact version in the
 /// filename is the reproducibility guarantee, not the snapshot date.
 pub fn write_lockfile(
@@ -14,8 +14,8 @@ pub fn write_lockfile(
     resolved: &HashMap<String, RVersion>,
     index: &HashMap<String, Package>,
 ) {
-    write_lockfile_to(Path::new("arrrv.lock"), roots, resolved, index);
-    println!("wrote arrrv.lock");
+    write_lockfile_to(Path::new("ruv.lock"), roots, resolved, index);
+    println!("wrote ruv.lock");
 }
 
 fn write_lockfile_to(
@@ -27,7 +27,7 @@ fn write_lockfile_to(
     let mut sorted_roots = roots.to_vec();
     sorted_roots.sort();
 
-    let mut out = String::from("# arrrv.lock — generated, do not edit\n\nversion = 1\n\n");
+    let mut out = String::from("# ruv.lock — generated, do not edit\n\nversion = 1\n\n");
     out.push_str("[manifest]\n");
     out.push_str("dependencies = [");
     out.push_str(
@@ -82,16 +82,16 @@ fn write_lockfile_to(
     std::fs::write(path, out).unwrap();
 }
 
-/// Reads arrrv.lock and returns the list of locked (name, version, registry_url) triples.
+/// Reads ruv.lock and returns the list of locked (name, version, registry_url) triples.
 pub fn read_lockfile() -> Vec<(String, String, String)> {
-    let text = std::fs::read_to_string("arrrv.lock")
-        .expect("no arrrv.lock found — run `arrrv lock` first");
+    let text = std::fs::read_to_string("ruv.lock")
+        .expect("no ruv.lock found — run `ruv lock` first");
     parse_lockfile(&text)
 }
 
 /// Returns true if the lockfile exists and its manifest deps match the given roots.
 pub fn lockfile_is_fresh(roots: &[String]) -> bool {
-    let Ok(text) = std::fs::read_to_string("arrrv.lock") else {
+    let Ok(text) = std::fs::read_to_string("ruv.lock") else {
         return false;
     };
     let Ok(lf) = toml::from_str::<LockfileHeader>(&text) else {
@@ -135,7 +135,7 @@ fn parse_lockfile(text: &str) -> Vec<(String, String, String)> {
     fn default_registry() -> String {
         format!("{}/latest", RSPM_BASE)
     }
-    let lf: RawLockfile = toml::from_str(text).expect("failed to parse arrrv.lock");
+    let lf: RawLockfile = toml::from_str(text).expect("failed to parse ruv.lock");
     lf.package
         .into_iter()
         .map(|p| (p.name, p.version, p.source.registry))
