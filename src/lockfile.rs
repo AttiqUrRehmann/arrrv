@@ -84,8 +84,8 @@ fn write_lockfile_to(
 
 /// Reads ruv.lock and returns the list of locked (name, version, registry_url) triples.
 pub fn read_lockfile() -> Vec<(String, String, String)> {
-    let text = std::fs::read_to_string("ruv.lock")
-        .expect("no ruv.lock found — run `ruv lock` first");
+    let text =
+        std::fs::read_to_string("ruv.lock").expect("no ruv.lock found — run `ruv lock` first");
     parse_lockfile(&text)
 }
 
