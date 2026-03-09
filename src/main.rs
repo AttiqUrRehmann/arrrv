@@ -18,10 +18,10 @@ use installer::{build_urls, build_urls_from_pairs, download_and_install};
 use lockfile::{lockfile_is_fresh, read_lockfile, write_lockfile};
 use resolver::{resolve, resolve_all};
 
-const LIB_DIR: &str = ".arrrv/library";
+const LIB_DIR: &str = ".ruv/library";
 
 #[derive(Parser)]
-#[command(name = "arrrv", about = "A fast R package manager")]
+#[command(name = "ruv", about = "A fast R package manager")]
 struct Cli {
     /// Print extra debug information
     #[arg(long, short, global = true)]
@@ -32,18 +32,18 @@ struct Cli {
 
 #[derive(Subcommand)]
 enum Commands {
-    /// Create a new arrrv.toml in the current directory
+    /// Create a new ruv.toml in the current directory
     Init,
     /// Install an R package and its dependencies
     Install {
         /// Name of the package to install
         package: String,
     },
-    /// Install from arrrv.lock (error if lockfile missing or stale)
+    /// Install from ruv.lock (error if lockfile missing or stale)
     Sync,
-    /// Resolve dependencies from arrrv.toml and write arrrv.lock
+    /// Resolve dependencies from ruv.toml and write ruv.lock
     Lock,
-    /// Add a package to arrrv.toml and sync
+    /// Add a package to ruv.toml and sync
     Add {
         /// Name of the package to add
         package: String,
@@ -79,8 +79,8 @@ fn main() {
                 eprintln!("error: {e}");
                 std::process::exit(1);
             });
-            println!("wrote arrrv.toml");
-            println!("next: run `arrrv lock` then `arrrv sync`");
+            println!("wrote ruv.toml");
+            println!("next: run `ruv lock` then `ruv sync`");
         }
 
         Commands::Install { package } => {
@@ -161,7 +161,7 @@ fn main() {
                 .collect();
 
             if !lockfile_is_fresh(&roots) {
-                eprintln!("error: arrrv.lock is missing or out of date — run `arrrv lock` first");
+                eprintln!("error: ruv.lock is missing or out of date — run `ruv lock` first");
                 std::process::exit(1);
             }
 
@@ -203,19 +203,19 @@ fn main() {
                 std::process::exit(1);
             }) {
                 AddDependencyResult::Added => {
-                    println!("added \"{}\" to arrrv.toml", package);
-                    println!("next: run `arrrv lock && arrrv sync`");
+                    println!("added \"{}\" to ruv.toml", package);
+                    println!("next: run `ruv lock && ruv sync`");
                 }
                 AddDependencyResult::AlreadyPresent => {
-                    println!("\"{}\" is already in arrrv.toml", package);
-                    println!("next: run `arrrv lock && arrrv sync`");
+                    println!("\"{}\" is already in ruv.toml", package);
+                    println!("next: run `ruv lock && ruv sync`");
                 }
             }
         }
 
         Commands::Run { args } => {
             let lib_dir = std::fs::canonicalize(LIB_DIR)
-                .expect("no project library found — run `arrrv lock && arrrv sync` first");
+                .expect("no project library found — run `ruv lock && ruv sync` first");
 
             std::process::Command::new("Rscript")
                 .args(&args)

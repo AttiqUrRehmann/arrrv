@@ -30,7 +30,7 @@
 
 | Function | Visibility | Test | Type | Notes |
 |---|---|---|---|---|
-| `read_config` | pub | none | — | Reads from `arrrv.toml` on disk — needs a fixture file to test properly |
+| `read_config` | pub | none | — | Reads from `ruv.toml` on disk — needs a fixture file to test properly |
 | `parse_dep_name` | pub | `test_parse_dep_name_with_gte`, `test_parse_dep_name_no_version`, `test_parse_dep_name_with_spaces`, `test_parse_dep_name_preserves_dots_and_dashes` | Unit | Pure string function, fully covered across 4 cases |
 
 ---
@@ -91,7 +91,7 @@ In priority order:
 2. **`write_lockfile`** — straightforward integration test with `tempfile`. Low effort,
    good value.
 
-3. **`read_config`** — integration test using a temp `arrrv.toml` fixture. Low effort.
+3. **`read_config`** — integration test using a temp `ruv.toml` fixture. Low effort.
 
 4. **`get_r_version`** — integration test that shells out to R. Only runs if R is installed,
    so should be gated or placed in a separate test that can be skipped in CI.

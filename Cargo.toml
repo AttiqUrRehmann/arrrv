@@ -1,6 +1,6 @@
 [package]
-name = "arrrv"
-version = "0.1.0"
+name = "ruv"
+version = "0.1.0-alpha.2"
 edition = "2024"
 
 [dependencies]

@@ -2,12 +2,12 @@
 /target
 
 # Downloaded package libraries
-/arrrv_lib
-/.arrrv
+/ruv_lib
+/.ruv
 
 # Force-include lock files (overrides global *.lock rule)
 !Cargo.lock
-!arrrv.lock
+!ruv.lock
 
 # macOS
 .DS_Store

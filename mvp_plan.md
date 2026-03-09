@@ -1,4 +1,4 @@
-# arrrv MVP plan
+# ruv MVP plan
 
 The MVP answers one question: **given a package name, install it and all its
 dependencies into a local library directory**, entirely from Rust, on the current
@@ -12,16 +12,16 @@ end-to-end. Everything else builds on top of this.
 ## What the MVP does
 
 ```
-arrrv install ggplot2
+ruv install ggplot2
 ```
 
 1. Fetch the CRAN package index
 2. Parse it to build an in-memory map of every package + its dependencies
 3. Resolve the full dependency tree for `ggplot2`
 4. Download the correct binary for the current OS
-5. Extract each binary into `./arrrv_lib/`
+5. Extract each binary into `./ruv_lib/`
 
-Running R with `R_LIBS=./arrrv_lib Rscript -e "library(ggplot2)"` should work
+Running R with `R_LIBS=./ruv_lib Rscript -e "library(ggplot2)"` should work
 at the end.
 
 ---
@@ -72,7 +72,7 @@ reqwest = { version = "0.12", features = ["blocking"] }
 flate2 = "1"
 ```
 
-**Smoke test:** running `arrrv` prints the first 50 lines of the PACKAGES file.
+**Smoke test:** running `ruv` prints the first 50 lines of the PACKAGES file.
 
 ---
 
@@ -138,14 +138,14 @@ To detect which to use:
 
 ---
 
-### Step 5 — Download and extract binaries into `./arrrv_lib/`
+### Step 5 — Download and extract binaries into `./ruv_lib/`
 
 For each resolved package:
 1. HTTP GET the `.tgz` URL
-2. Decompress + untar into `./arrrv_lib/`
+2. Decompress + untar into `./ruv_lib/`
 
 R binary packages are tarballs with a single top-level directory named after the
-package. Extracting them all into the same `arrrv_lib/` directory produces the
+package. Extracting them all into the same `ruv_lib/` directory produces the
 correct library structure.
 
 **Crates needed:**
@@ -158,7 +158,7 @@ it works.
 
 **Final smoke test:**
 ```bash
-R_LIBS=./arrrv_lib Rscript -e "library(ggplot2); ggplot()"
+R_LIBS=./ruv_lib Rscript -e "library(ggplot2); ggplot()"
 ```
 
 ---
@@ -195,5 +195,5 @@ These are all Phase 2+ from `project_plan.md`.
 2. Parse into HashMap, print ggplot2's direct deps
 3. BFS resolver, print full dep list for ggplot2
 4. Build download URLs, print them
-5. Download + extract into arrrv_lib/
+5. Download + extract into ruv_lib/
 6. Smoke test with Rscript
