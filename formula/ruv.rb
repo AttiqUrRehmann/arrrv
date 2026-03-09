@@ -19,7 +19,7 @@ class Ruv < Formula
     sha256 "PLACEHOLDER_LINUX_SHA256"
   end
 
-  version "0.1.0"
+  version "0.1.0-alpha.2"
 
   def install
     bin.install "ruv-#{version}/bin/ruv"
