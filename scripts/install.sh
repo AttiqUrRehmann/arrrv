@@ -6,7 +6,7 @@ TAG="${1:-latest}"
 
 if [ "$TAG" = "latest" ]; then
   echo "Fetching latest release..."
-  TAG=$(curl -s https://api.github.com/repos/$REPO/releases/latest | grep '"tag_name"' | sed -E 's/.*"([^"]+)".*/\1/')
+  TAG=$(curl -s https://api.github.com/repos/$REPO/releases | grep '"tag_name"' | head -1 | sed -E 's/.*"([^"]+)".*/\1/')
   if [ -z "$TAG" ]; then
     echo "Error: Could not determine latest release tag"
     exit 1
