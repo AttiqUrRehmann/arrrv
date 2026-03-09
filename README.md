@@ -1,4 +1,4 @@
-# arrrv
+# ruv
 
 > A fast R package manager, written in Rust. The R equivalent of [`uv`](https://github.com/astral-sh/uv).
 
@@ -13,7 +13,7 @@ R package management is slow, fragmented, and requires too many tools:
 - `pak` — faster installs but no lockfile or version management
 - `rig` — R version management, but a separate tool
 
-`arrrv` replaces all of them with a single fast binary.
+`ruv` replaces all of them with a single fast binary.
 
 ## Goals
 
@@ -26,7 +26,7 @@ R package management is slow, fragmented, and requires too many tools:
 
 ### Project setup
 
-Create an `arrrv.toml` in your project directory:
+Create an `ruv.toml` in your project directory:
 
 ```toml
 [project]
@@ -42,52 +42,52 @@ dependencies = [
 ### Commands
 
 ```sh
-# Create arrrv.toml in the current directory
-arrrv init
+# Create ruv.toml in the current directory
+ruv init
 
-# Resolve dependencies and write arrrv.lock
-arrrv lock
+# Resolve dependencies and write ruv.lock
+ruv lock
 
-# Install exact versions from arrrv.lock
-arrrv sync
+# Install exact versions from ruv.lock
+ruv sync
 
-# Install a package and its dependencies (without modifying arrrv.toml)
-arrrv install ggplot2
+# Install a package and its dependencies (without modifying ruv.toml)
+ruv install ggplot2
 
 # Run a script using the project library
-arrrv run Rscript analysis.R
-arrrv run -- -e "library(ggplot2)"
+ruv run Rscript analysis.R
+ruv run -- -e "library(ggplot2)"
 ```
 
 ### Typical workflow
 
 ```sh
 # First time — resolve and install
-arrrv lock
-arrrv sync
+ruv lock
+ruv sync
 
-# After editing arrrv.toml — re-resolve and reinstall
-arrrv lock
-arrrv sync
+# After editing ruv.toml — re-resolve and reinstall
+ruv lock
+ruv sync
 
 # Colleague clones the repo — restore exactly from lockfile
-arrrv sync
+ruv sync
 ```
 
 ### Flags
 
 ```sh
-arrrv --verbose sync   # show per-package source (cache vs download)
+ruv --verbose sync   # show per-package source (cache vs download)
 ```
 
 ## How it works
 
-- **`arrrv lock`** fetches the CRAN package index, resolves all transitive dependencies using the PubGrub algorithm, and writes `arrrv.lock` with exact versions and the full dependency graph. Each package entry records its pinned version and the [RSPM](https://packagemanager.posit.co) `cran/latest` registry — the exact version in the filename (e.g. `ggplot2_3.5.1.tgz`) is the reproducibility guarantee.
-- **`arrrv sync`** reads `arrrv.lock` directly — no CRAN fetch required — and installs packages into `.arrrv/library/` from the pinned RSPM binary URLs. Packages are downloaded once to a global cache (`~/Library/Caches/arrrv/` on macOS) and hard-linked into the project library, so repeated installs across projects are instant.
+- **`ruv lock`** fetches the CRAN package index, resolves all transitive dependencies using the PubGrub algorithm, and writes `ruv.lock` with exact versions and the full dependency graph. Each package entry records its pinned version and the [RSPM](https://packagemanager.posit.co) `cran/latest` registry — the exact version in the filename (e.g. `ggplot2_3.5.1.tgz`) is the reproducibility guarantee.
+- **`ruv sync`** reads `ruv.lock` directly — no CRAN fetch required — and installs packages into `.ruv/library/` from the pinned RSPM binary URLs. Packages are downloaded once to a global cache (`~/Library/Caches/ruv/` on macOS) and hard-linked into the project library, so repeated installs across projects are instant.
 
 ## Comparison
 
-| | `install.packages` | `renv` | `pak` | **arrrv** |
+| | `install.packages` | `renv` | `pak` | **ruv** |
 |---|---|---|---|---|
 | Parallel downloads | ❌ | ❌ | ✅ | ✅ |
 | Global binary cache | ❌ | ❌ | ❌ | ✅ |
@@ -98,19 +98,19 @@ arrrv --verbose sync   # show per-package source (cache vs download)
 
 ## Status
 
-Working MVP on macOS (arm64 + x86_64). Active development — see the [GitHub issues](https://github.com/A-Fisk/arrrv/issues) for the roadmap.
+Working MVP on macOS (arm64 + x86_64). Active development — see the [GitHub issues](https://github.com/A-Fisk/ruv/issues) for the roadmap.
 
 **What works:**
-- `arrrv lock` — PubGrub dependency resolution + write lockfile with exact versions and RSPM/latest URLs
-- `arrrv sync` — restore from lockfile using pinned RSPM binaries (no CRAN fetch on warm runs)
-- `arrrv install` — one-off package install
-- `arrrv run` — run scripts with the project library
+- `ruv lock` — PubGrub dependency resolution + write lockfile with exact versions and RSPM/latest URLs
+- `ruv sync` — restore from lockfile using pinned RSPM binaries (no CRAN fetch on warm runs)
+- `ruv install` — one-off package install
+- `ruv run` — run scripts with the project library
 - Version constraint solving (`>=`, `==`, `<=`, `<`) including pinning to older versions via crandb
 - Global package cache with hard-linking
 - 54 unit tests, CI on GitHub Actions
 
 **Coming next:**
-- `arrrv add` / `arrrv remove`
+- `ruv add` / `ruv remove`
 - Bioconductor package support
 - R version management
 
@@ -119,8 +119,8 @@ Working MVP on macOS (arm64 + x86_64). Active development — see the [GitHub is
 Requires Rust (install via [rustup](https://rustup.rs)):
 
 ```sh
-git clone https://github.com/A-Fisk/arrrv
-cd arrrv
+git clone https://github.com/A-Fisk/ruv
+cd ruv
 cargo build
 cargo test
 ```

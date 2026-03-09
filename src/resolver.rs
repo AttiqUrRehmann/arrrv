@@ -163,7 +163,7 @@ pub fn resolve(
 }
 
 /// Resolves all transitive dependencies for multiple root packages, each with
-/// an optional version constraint from arrrv.toml. Uses a synthetic root package
+/// an optional version constraint from ruv.toml. Uses a synthetic root package
 /// so that all constraints are fed into a single PubGrub resolution pass.
 pub fn resolve_all(
     roots: &[crate::version::Dep],
@@ -337,7 +337,7 @@ mod tests {
     fn test_resolve_all_enforces_root_constraints() {
         use crate::version::Op;
         let index = make_index();
-        // user pins rlang >= 99.0 in arrrv.toml — should fail at the root level
+        // user pins rlang >= 99.0 in ruv.toml — should fail at the root level
         let roots = vec![constrained("rlang", Op::Gte, "99.0")];
         assert!(resolve_all(&roots, &index, false).is_err());
     }
@@ -492,7 +492,7 @@ mod tests {
         let mut index = make_index();
         // Pin the version that IS in the fake index — no crandb call needed.
         // Pinning an older version that requires crandb is covered by running
-        // `arrrv lock` against a real arrrv.toml.
+        // `ruv lock` against a real ruv.toml.
         index.get_mut("scales").unwrap().deps = vec![constrained("rlang", Op::Eq, "1.1.4")];
         let resolved = resolve("scales", &index, false).unwrap();
         assert_eq!(resolved["rlang"], RVersion::parse("1.1.4").unwrap());

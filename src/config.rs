@@ -3,7 +3,7 @@ use serde::Deserialize;
 use std::io::ErrorKind;
 use std::path::Path;
 
-pub const CONFIG_FILE: &str = "arrrv.toml";
+pub const CONFIG_FILE: &str = "ruv.toml";
 
 #[derive(Deserialize)]
 pub struct ArrrConfig {
@@ -23,7 +23,7 @@ pub fn read_config() -> Result<ArrrConfig, String> {
     let text = std::fs::read_to_string(CONFIG_FILE).map_err(|e| {
         if e.kind() == ErrorKind::NotFound {
             format!(
-                "could not find {} in this directory — run `arrrv init` first",
+                "could not find {} in this directory — run `ruv init` first",
                 CONFIG_FILE
             )
         } else {
@@ -51,7 +51,7 @@ pub fn add_dependency(dep: &str) -> Result<AddDependencyResult, String> {
     let text = std::fs::read_to_string(CONFIG_FILE).map_err(|e| {
         if e.kind() == ErrorKind::NotFound {
             format!(
-                "could not find {} in this directory — run `arrrv init` first",
+                "could not find {} in this directory — run `ruv init` first",
                 CONFIG_FILE
             )
         } else {
@@ -361,7 +361,7 @@ fn infer_project_key_indent(text: &str, body_start: usize, body_end: usize) -> S
     String::new()
 }
 
-/// Parse a dependency string from arrrv.toml into a `Dep`.
+/// Parse a dependency string from ruv.toml into a `Dep`.
 /// Handles formats: "ggplot2", "ggplot2>=3.4", "rlang (>= 1.0)"
 pub fn parse_dep(s: &str) -> Dep {
     let name: String = s
@@ -387,7 +387,7 @@ mod tests {
     use super::*;
 
     fn parse_config(text: &str) -> ArrrConfig {
-        toml::from_str(text).expect("failed to parse arrrv.toml")
+        toml::from_str(text).expect("failed to parse ruv.toml")
     }
 
     #[test]

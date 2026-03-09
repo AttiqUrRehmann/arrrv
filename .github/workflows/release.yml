@@ -40,15 +40,15 @@ jobs:
 
       - name: Create tarball
         run: |
-          mkdir -p arrrv-${{ matrix.target }}/bin
-          cp target/${{ matrix.target }}/release/arrrv arrrv-${{ matrix.target }}/bin/
-          tar czf arrrv-${{ matrix.target }}.tar.gz arrrv-${{ matrix.target }}/
+          mkdir -p ruv-${{ matrix.target }}/bin
+          cp target/${{ matrix.target }}/release/ruv ruv-${{ matrix.target }}/bin/
+          tar czf ruv-${{ matrix.target }}.tar.gz ruv-${{ matrix.target }}/
 
       - name: Upload artifacts
         uses: actions/upload-artifact@v4
         with:
-          name: arrrv-${{ matrix.target }}
-          path: arrrv-${{ matrix.target }}.tar.gz
+          name: ruv-${{ matrix.target }}
+          path: ruv-${{ matrix.target }}.tar.gz
 
   publish:
     name: Publish Release

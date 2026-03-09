@@ -1,6 +1,6 @@
-# arrrv — A uv-inspired package manager for R
+# ruv — A uv-inspired package manager for R
 
-> `arrrv` is to R what `uv` is to Python: a single fast Rust binary that manages
+> `ruv` is to R what `uv` is to Python: a single fast Rust binary that manages
 > R versions, project libraries, dependency resolution, and reproducible installs.
 
 ---
@@ -20,7 +20,7 @@
 
 ## Name
 
-The CLI is `arrrv`. (`rv` is already taken by a Ruby uv-equivalent.)
+The CLI is `ruv`. (`rv` is already taken by a Ruby uv-equivalent.)
 
 ---
 
@@ -30,21 +30,21 @@ The CLI is `arrrv`. (`rv` is already taken by a Ruby uv-equivalent.)
 all of which Rust handles well. Same rationale as uv.
 
 ```
-arrrv/
-├── arrrv-cli/          # CLI entry point
-├── arrrv-resolver/     # PubGrub-based dependency resolution engine
-├── arrrv-installer/    # parallel download + package extraction
-├── arrrv-cache/        # global content-addressable package cache
-├── arrrv-rversion/     # R version download + management
-├── arrrv-lockfile/     # lockfile read/write
-└── arrrv-metadata/     # CRAN/Bioc/r-universe metadata fetching
+ruv/
+├── ruv-cli/          # CLI entry point
+├── ruv-resolver/     # PubGrub-based dependency resolution engine
+├── ruv-installer/    # parallel download + package extraction
+├── ruv-cache/        # global content-addressable package cache
+├── ruv-rversion/     # R version download + management
+├── ruv-lockfile/     # lockfile read/write
+└── ruv-metadata/     # CRAN/Bioc/r-universe metadata fetching
 ```
 
 ---
 
 ## Project file format
 
-For scripts and applications, a new `arrrv.toml`:
+For scripts and applications, a new `ruv.toml`:
 
 ```toml
 [project]
@@ -69,7 +69,7 @@ existing packages work without modification.
 ## Lock file format
 
 ```toml
-# arrrv.lock — generated, do not edit
+# ruv.lock — generated, do not edit
 
 [[package]]
 name = "ggplot2"
@@ -108,7 +108,7 @@ The resolver handles:
 CRAN provides pre-built binaries for Windows (`.zip`) and macOS (`.tgz`). The approach:
 
 - **Parallel downloads** — current R tooling is largely sequential
-- **Global content-addressable cache** at `~/.cache/arrrv/` — if `ggplot2 3.5.1` is
+- **Global content-addressable cache** at `~/.cache/ruv/` — if `ggplot2 3.5.1` is
   cached, never re-download across projects
 - **Hard-link from cache into project library** — zero-copy installs (same as uv)
 - **Source fallback** — compile from source when no binary exists, cache the compiled result
@@ -123,12 +123,12 @@ Linux, which provides pre-built Linux binaries and is the key unlock for Linux s
 
 ## R version management
 
-Integrate what `rig` does, built into `arrrv`:
+Integrate what `rig` does, built into `ruv`:
 
 - Download R from official CRAN/R-project mirrors
-- Manage multiple R versions under `~/.local/share/arrrv/r-versions/`
+- Manage multiple R versions under `~/.local/share/ruv/r-versions/`
 - `.r-version` file per project (like `.python-version`)
-- Auto-install the required R version on `arrrv sync` if missing
+- Auto-install the required R version on `ruv sync` if missing
 
 ---
 
@@ -136,29 +136,29 @@ Integrate what `rig` does, built into `arrrv`:
 
 ```
 # Dependency management
-arrrv add ggplot2                  # add + install, update lockfile
-arrrv add ggplot2@3.4.0            # pin specific version
-arrrv add bioc:DESeq2              # Bioconductor package
-arrrv add gh:tidyverse/ggplot2     # GitHub package
-arrrv remove ggplot2
+ruv add ggplot2                  # add + install, update lockfile
+ruv add ggplot2@3.4.0            # pin specific version
+ruv add bioc:DESeq2              # Bioconductor package
+ruv add gh:tidyverse/ggplot2     # GitHub package
+ruv remove ggplot2
 
 # Project sync
-arrrv sync                         # install from lockfile (fast path: binary cache)
-arrrv install                      # alias for sync
+ruv sync                         # install from lockfile (fast path: binary cache)
+ruv install                      # alias for sync
 
 # Running R
-arrrv run Rscript analysis.R       # run with project library, auto-sync if needed
-arrrv run -- -e "library(dplyr)"   # run R expression
+ruv run Rscript analysis.R       # run with project library, auto-sync if needed
+ruv run -- -e "library(dplyr)"   # run R expression
 
 # R version management
-arrrv r install 4.4.1              # download + install R version
-arrrv r list                       # list installed R versions
-arrrv r pin 4.4.1                  # write .r-version for this project
-arrrv r default 4.4.1              # set system-wide default
+ruv r install 4.4.1              # download + install R version
+ruv r list                       # list installed R versions
+ruv r pin 4.4.1                  # write .r-version for this project
+ruv r default 4.4.1              # set system-wide default
 
 # Cache management
-arrrv cache clean                  # prune old/unused packages
-arrrv cache info                   # show cache size and stats
+ruv cache clean                  # prune old/unused packages
+ruv cache info                   # show cache size and stats
 ```
 
 ---
@@ -169,36 +169,36 @@ arrrv cache info                   # show cache size and stats
 
 - CRAN metadata fetching and parsing (`PACKAGES.gz`)
 - Parallel binary package download and extraction
-- Global cache at `~/.cache/arrrv/`
-- Basic project library management (`.arrrv/library/`)
+- Global cache at `~/.cache/ruv/`
+- Basic project library management (`.ruv/library/`)
 - Simple lockfile (record installed packages, no full resolver yet)
 
 ### Phase 2 — Resolver
 
 - PubGrub-based dependency resolution
 - Full deterministic lockfile generation
-- `arrrv sync` restores exactly from lockfile
+- `ruv sync` restores exactly from lockfile
 - Bioconductor source support
 
 ### Phase 3 — R version management
 
 - Download and install R versions from official mirrors
 - `.r-version` file support
-- Auto-select correct R for project on `arrrv sync` / `arrrv run`
+- Auto-select correct R for project on `ruv sync` / `ruv run`
 
 ### Phase 4 — Developer experience
 
-- `arrrv run` with ephemeral per-script environments (like `uv run`)
+- `ruv run` with ephemeral per-script environments (like `uv run`)
 - GitHub and r-universe package sources
-- `arrrv add` / `arrrv remove` properly update lockfile
+- `ruv add` / `ruv remove` properly update lockfile
 - Shell completions (bash, zsh, fish)
-- `arrrv import renv` migration path for existing `renv` projects
+- `ruv import renv` migration path for existing `renv` projects
 
 ### Phase 5 — Polish
 
 - Source package compilation caching on Linux
 - System dependency hints (like `pak`'s sysreqs detection)
-- `arrrv publish` to submit packages to CRAN / r-universe
+- `ruv publish` to submit packages to CRAN / r-universe
 - IDE integration hooks for RStudio and Positron
 
 ---
@@ -220,8 +220,8 @@ Bioconductor releases are tightly coupled to specific R versions. The resolver n
 maintain and consult a compatibility matrix (e.g., Bioc 3.18 → R 4.3.x only).
 
 ### 4. renv adoption / migration
-Many existing R projects use `renv`. An `arrrv import renv` command that reads
-`renv.lock` and produces an `arrrv.lock` is essential for adoption.
+Many existing R projects use `renv`. An `ruv import renv` command that reads
+`renv.lock` and produces an `ruv.lock` is essential for adoption.
 
 ---
 
@@ -233,15 +233,15 @@ Many existing R projects use `renv`. An `arrrv import renv` command that reads
 | `pak` | fast (parallel) | no | no | no |
 | `renv` | slow | yes | no | no |
 | `rig` | n/a | n/a | yes | n/a |
-| **arrrv** | **fast** | **yes** | **yes** | **yes** |
+| **ruv** | **fast** | **yes** | **yes** | **yes** |
 
 ---
 
 ## Success criteria
 
-- `arrrv sync` on a cold cache is at least 5× faster than `renv::restore()` on the same
+- `ruv sync` on a cold cache is at least 5× faster than `renv::restore()` on the same
   lockfile
-- `arrrv sync` on a warm cache (all packages cached) completes in under 2 seconds
-- Single statically-linked binary with no R installation required to install arrrv itself
-- Full round-trip: `arrrv add` → `arrrv.lock` committed → colleague runs `arrrv sync` →
+- `ruv sync` on a warm cache (all packages cached) completes in under 2 seconds
+- Single statically-linked binary with no R installation required to install ruv itself
+- Full round-trip: `ruv add` → `ruv.lock` committed → colleague runs `ruv sync` →
   identical library
